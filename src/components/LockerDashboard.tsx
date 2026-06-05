@@ -193,6 +193,22 @@ export default function LockerDashboard({
               </button>
             </div>
 
+            <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950/20 border border-brand-border rounded-xl p-4">
+              <div className="bg-white p-1.5 rounded-lg shrink-0">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(shareUrl)}`} 
+                  alt="Locker QR Code" 
+                  className="w-24 h-24 block"
+                />
+              </div>
+              <div className="space-y-1 text-center sm:text-left select-none">
+                <h4 className="text-xs font-bold text-white uppercase tracking-wider">Scan with Camera</h4>
+                <p className="text-[11px] text-slate-400 leading-relaxed">
+                  Open the camera on your smartphone or tablet, scan this QR code, and open the link to start downloading immediately.
+                </p>
+              </div>
+            </div>
+
             {/* Quick Lock Details */}
             <div className="grid grid-cols-3 gap-3 pt-1 select-none">
               <div className="bg-slate-900/20 rounded-xl border border-brand-border p-3 text-center">
