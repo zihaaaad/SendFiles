@@ -113,6 +113,11 @@ export default function App() {
     status: "idle" | "waiting-acceptance" | "transferring" | "success" | "declined" | "failed" | "canceled";
   } | null>(null);
 
+  const senderTransferRef = useRef<typeof senderTransfer>(null);
+  useEffect(() => {
+    senderTransferRef.current = senderTransfer;
+  }, [senderTransfer]);
+
   // Direct Beam Receiver State
   const [receiverTransfer, setReceiverTransfer] = useState<{
     peerId: string;
@@ -263,8 +268,9 @@ export default function App() {
 
             case "file-offer-response":
               if (payload.accepted) {
-                if (senderTransfer && activeSenderFileRef.current) {
-                  beginChunkStreaming(senderTransfer.peerId, activeSenderFileRef.current);
+                const currentSenderTransfer = senderTransferRef.current;
+                if (currentSenderTransfer && activeSenderFileRef.current) {
+                  beginChunkStreaming(currentSenderTransfer.peerId, activeSenderFileRef.current);
                 }
               } else {
                 setSenderTransfer(prev => prev ? { ...prev, status: "declined" } : null);
@@ -358,14 +364,14 @@ export default function App() {
   };
 
   const beginChunkStreaming = async (recipientId: string, file: File) => {
-    if (!senderTransfer) return;
+    if (!senderTransferRef.current) return;
 
     setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const startTime = Date.now();
 
     for (let index = 0; index < totalChunks; index++) {
-      if (!activeSenderFileRef.current || senderTransfer?.status === "canceled") {
+      if (!activeSenderFileRef.current || senderTransferRef.current?.status === "canceled") {
         break;
       }
 
@@ -420,10 +426,11 @@ export default function App() {
   };
 
   const cancelSenderFlow = () => {
-    if (senderTransfer) {
+    const currentSenderTransfer = senderTransferRef.current;
+    if (currentSenderTransfer) {
       sendSignal({
         type: "transfer-canceled",
-        targetPeerId: senderTransfer.peerId
+        targetPeerId: currentSenderTransfer.peerId
       });
     }
     setSenderTransfer(null);
