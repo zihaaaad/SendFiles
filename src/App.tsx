@@ -45,6 +45,18 @@ import ReceptionPanel from "./components/ReceptionPanel";
 // Chunk size for direct WebSocket relay fallback: 60kb
 const CHUNK_SIZE = 60000;
 
+const ADJECTIVES = [
+  "Cyber", "Stellar", "Cosmic", "Quantum", "Shadow", "Neon",
+  "Aero", "Hyper", "Vortex", "Dynamic", "Nexus", "Matrix",
+  "Apex", "Solar", "Glitch", "Cipher", "Swift", "Silent"
+];
+
+const ANIMALS = [
+  "Falcon", "Specter", "Dolphin", "Phoenix", "Lynx", "Tiger",
+  "Viper", "Raptor", "Grid", "Panda", "Ghost", "Sentinel",
+  "Cobra", "Titan", "Ranger", "Orbit", "Nova", "Nomad"
+];
+
 interface DiscoveredPeer {
   peerId: string;
   name: string;
@@ -68,18 +80,8 @@ export default function App() {
   const [profileName, setProfileName] = useState<string>(() => {
     let user = localStorage.getItem("filedrop_operator_user");
     if (!user) {
-      const adjectives = [
-        "Cyber", "Stellar", "Cosmic", "Quantum", "Shadow", "Neon",
-        "Aero", "Hyper", "Vortex", "Dynamic", "Nexus", "Matrix",
-        "Apex", "Solar", "Glitch", "Cipher", "Swift", "Silent"
-      ];
-      const animals = [
-        "Falcon", "Specter", "Dolphin", "Phoenix", "Lynx", "Tiger",
-        "Viper", "Raptor", "Grid", "Panda", "Ghost", "Sentinel",
-        "Cobra", "Titan", "Ranger", "Orbit", "Nova", "Nomad"
-      ];
-      const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
-      const randomAnimal = animals[Math.floor(Math.random() * animals.length)];
+      const randomAdj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+      const randomAnimal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
       user = `${randomAdj} ${randomAnimal}`;
       localStorage.setItem("filedrop_operator_user", user);
     }
@@ -320,20 +322,9 @@ export default function App() {
     };
   }, [profileName, view, tab]);
 
-  // Rename Profile identity handler
   const handleRegenName = () => {
-    const adjectives = [
-      "Cyber", "Stellar", "Cosmic", "Quantum", "Shadow", "Neon",
-      "Aero", "Hyper", "Vortex", "Dynamic", "Nexus", "Matrix",
-      "Apex", "Solar", "Glitch", "Cipher", "Swift", "Silent"
-    ];
-    const animals = [
-      "Falcon", "Specter", "Dolphin", "Phoenix", "Lynx", "Tiger",
-      "Viper", "Raptor", "Grid", "Panda", "Ghost", "Sentinel",
-      "Cobra", "Titan", "Ranger", "Orbit", "Nova", "Nomad"
-    ];
-    const randomAdj = adjectives[Math.floor(Math.random() * adjectives.length)];
-    const randomAnimal = animals[Math.floor(Math.random() * animals.length)];
+    const randomAdj = ADJECTIVES[Math.floor(Math.random() * ADJECTIVES.length)];
+    const randomAnimal = ANIMALS[Math.floor(Math.random() * ANIMALS.length)];
     const newName = `${randomAdj} ${randomAnimal}`;
     
     setSelectedRecipientId(null);

@@ -8,7 +8,7 @@ import { encryptChunk, decryptChunk } from "./crypto";
 import { saveChunkToDB, compileFilesFromDB } from "./db";
 
 const CHUNK_SIZE = 32768; // 32KB chunking specification size
-const ICE_CONFIG: RTCConfiguration = {
+export const ICE_CONFIG: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },

@@ -6,17 +6,9 @@
 import { FileMeta, TransferProgress, TransferState } from "../types";
 import { encryptChunk, decryptChunk, importKeyFromHex } from "./crypto";
 import { saveChunkToDB, compileFilesFromDB, clearRoomFromDB } from "./db";
-import { calculateSpeedAndETA, getWebSocketURL } from "./webrtc-helper";
+import { calculateSpeedAndETA, getWebSocketURL, ICE_CONFIG } from "./webrtc-helper";
 
 const CHUNK_SIZE = 32768; // 32KB chunk specs
-const ICE_CONFIG: RTCConfiguration = {
-  iceServers: [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-  ],
-};
 
 export class P2PSender {
   private roomId: string;

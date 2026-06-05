@@ -310,6 +310,20 @@ wss.on("connection", (ws: WebSocket, request) => {
         if (room) {
           room.downloadCount++;
           console.log(`[Locker Hub] Room ${roomId} download completed. Total: ${room.downloadCount}/${room.maxDownloads}`);
+          if (room.downloadCount >= room.maxDownloads) {
+            console.log(`[Locker Hub] Room ${roomId} reached download limit. Instantly pruning room.`);
+            // Close active websocket connections for this locker
+            for (const [pId, activePeer] of activePeers.entries()) {
+              if (activePeer.roomId === roomId) {
+                try {
+                  activePeer.ws.send(JSON.stringify({ type: "error", message: "Locker download limit reached" }));
+                  activePeer.ws.close();
+                } catch {}
+                activePeers.delete(pId);
+              }
+            }
+            rooms.delete(roomId);
+          }
         }
       }
 
@@ -435,6 +449,16 @@ setInterval(() => {
   for (const [rId, room] of rooms.entries()) {
     if (now > room.expiresAt || room.downloadCount >= room.maxDownloads) {
       console.log(`[Locker Hub] Pruning expired/exhausted Locker Room ${rId}`);
+      // Close active websocket connections for this locker
+      for (const [pId, activePeer] of activePeers.entries()) {
+        if (activePeer.roomId === rId) {
+          try {
+            activePeer.ws.send(JSON.stringify({ type: "error", message: "Locker room expired or pruned" }));
+            activePeer.ws.close();
+          } catch {}
+          activePeers.delete(pId);
+        }
+      }
       rooms.delete(rId);
     }
   }
