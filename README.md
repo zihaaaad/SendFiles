@@ -23,7 +23,7 @@ The frontend is implemented as a single-page application built on React 19, Tail
 ### Performance & Scaling
 - **IndexedDB Buffering**: Caches incoming file chunks directly onto client disk storage via IndexedDB. This bypasses browser heap memory constraints, enabling transfers of large files (10GB+) without memory exhaustion.
 - **Flow Control (Backpressure)**: Monitors WebRTC data channel congestion (`RTCDataChannel.bufferedAmount`). Transmissions are paused when the buffer exceeds 1MB and resumed once it drains, preventing packet loss.
-- **Canvas-Based Speed Graphs**: Draws real-time line charts showing transfer throughput and estimates accurate time remaining (ETA).
+- **Progress Metrics**: Estimates and displays accurate real-time transfer progress, speed, and remaining time (ETA).
 
 ---
 

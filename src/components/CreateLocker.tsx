@@ -152,7 +152,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
             <p className="text-[9px] text-slate-400 font-mono mt-0.5">DIRECT BROWSERS STREAM GATEWAY</p>
           </div>
           {files.length > 0 && (
-            <span className="text-[10px] bg-slate-900/40 text-indigo-400 font-mono px-2.5 py-1 rounded-lg border border-brand-border">
+            <span className="text-[10px] bg-slate-900/40 text-[#5eb075] font-mono px-2.5 py-1 rounded-lg border border-brand-border">
               {files.length} {files.length === 1 ? "file" : "files"} • {formatBytes(totalBytes)}
             </span>
           )}
@@ -167,7 +167,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
           onClick={files.length === 0 ? selectFilesClick : undefined}
           className={`flex-1 flex flex-col items-center justify-center border-2 border-dashed rounded-xl transition-all duration-200 p-6 text-center cursor-pointer select-none ${
             dragActive
-              ? "border-indigo-500 bg-indigo-500/5 text-indigo-400 shadow-sm"
+              ? "border-[#5eb075] bg-[#5eb075]/5 text-[#5eb075] shadow-sm"
               : files.length === 0
               ? "border-slate-700 hover:border-slate-500 hover:bg-slate-900/10"
               : "border-brand-border bg-slate-900/5 cursor-default"
@@ -184,14 +184,14 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
 
           {files.length === 0 ? (
             <div className="py-12 pointer-events-none">
-              <div className="w-12 h-12 bg-indigo-500/10 border border-indigo-500/15 rounded-2xl flex items-center justify-center mx-auto mb-4 text-indigo-400 shadow-inner">
+              <div className="w-12 h-12 bg-[#5eb075]/10 border border-[#5eb075]/15 rounded-2xl flex items-center justify-center mx-auto mb-4 text-[#5eb075] shadow-inner">
                 <UploadCloud size={22} />
               </div>
               <p className="text-xs font-bold text-white mb-1 tracking-tight">
                 Drag and drop files here
               </p>
               <p className="text-[10.5px] text-slate-450 max-w-[270px] mx-auto leading-relaxed">
-                or <span className="text-indigo-400 font-bold">browse local storage</span>. Streams up to 10GB+ directly.
+                or <span className="text-[#5eb075] font-bold">browse local storage</span>. Streams up to 10GB+ directly.
               </p>
             </div>
           ) : (
@@ -232,7 +232,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
                 <button
                   type="button"
                   onClick={selectFilesClick}
-                  className="text-xs font-mono text-slate-450 hover:text-indigo-400 underline decoration-slate-600 hover:decoration-indigo-500 underline-offset-4 cursor-pointer font-bold"
+                  className="text-xs font-mono text-slate-450 hover:text-[#5eb075] underline decoration-slate-600 hover:decoration-[#5eb075] underline-offset-4 cursor-pointer font-bold"
                 >
                   Add more files
                 </button>
@@ -251,71 +251,43 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
               <p className="text-[9px] text-slate-450 font-mono mt-0.5">ENVELOPE DESTRUCT CONDITIONS</p>
             </div>
 
-            {/* Expire in Minutes select slider */}
+            {/* Expire in Minutes select dropdown */}
             <div className="space-y-2">
               <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-slate-400 flex items-center">
-                  <Clock size={13} className="mr-1.5 text-indigo-400" /> TIMEOUT PERIOD
-                </span>
-                <span className="text-white font-bold bg-slate-900/60 px-2 py-0.5 rounded border border-brand-border text-[10.5px]">
-                  {expiresInMins === 10 ? "10 Minutes" : expiresInMins === 60 ? "1 Hour" : expiresInMins === 240 ? "4 Hours" : "24 Hours"}
+                <span className="text-slate-400 flex items-center select-none">
+                  <Clock size={13} className="mr-1.5 text-[#5eb075]" /> TIMEOUT PERIOD
                 </span>
               </div>
-              <input
-                type="range"
-                min="10"
-                max="1440"
-                step="10"
+              <select
                 value={expiresInMins}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  if (val <= 30) setExpiresInMins(10);
-                  else if (val <= 150) setExpiresInMins(60);
-                  else if (val <= 720) setExpiresInMins(240);
-                  else setExpiresInMins(1440);
-                }}
-                className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-              />
-              <div className="flex justify-between text-[9px] text-slate-500 font-mono px-0.5 select-none">
-                <span>10m</span>
-                <span>1h</span>
-                <span>4h</span>
-                <span>24h</span>
-              </div>
+                onChange={(e) => setExpiresInMins(Number(e.target.value))}
+                className="w-full bg-slate-950/40 text-xs text-white border border-brand-border focus:border-[#5eb075] focus:ring-1 focus:ring-[#5eb075]/10 rounded-xl px-4 py-2.5 outline-none transition-all font-mono"
+              >
+                <option value="10">10 Minutes</option>
+                <option value="60">1 Hour</option>
+                <option value="240">4 Hours</option>
+                <option value="1440">24 Hours</option>
+              </select>
             </div>
 
             {/* Total download limits */}
             <div className="space-y-2">
               <div className="flex justify-between items-center text-xs font-mono">
-                <span className="text-slate-400 flex items-center">
-                  <CheckCircle size={13} className="mr-1.5 text-indigo-400" /> DOWNLOAD LIMIT
-                </span>
-                <span className="text-white font-bold bg-slate-900/60 px-2 py-0.5 rounded border border-brand-border text-[10.5px]">
-                  {maxDownloads === 100 ? "Unlimited (100)" : `${maxDownloads} ${maxDownloads === 1 ? "Download" : "Downloads"}`}
+                <span className="text-slate-400 flex items-center select-none">
+                  <CheckCircle size={13} className="mr-1.5 text-[#5eb075]" /> DOWNLOAD LIMIT
                 </span>
               </div>
-              <input
-                type="range"
-                min="1"
-                max="100"
+              <select
                 value={maxDownloads}
-                onChange={(e) => {
-                  const val = Number(e.target.value);
-                  if (val > 25 && val < 100) setMaxDownloads(50);
-                  else if (val >= 100) setMaxDownloads(100);
-                  else if (val > 5 && val <= 25) setMaxDownloads(10);
-                  else if (val > 1 && val <= 5) setMaxDownloads(5);
-                  else setMaxDownloads(1);
-                }}
-                className="w-full h-1 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-indigo-500"
-              />
-              <div className="flex justify-between text-[9px] text-slate-500 font-mono px-0.5 select-none">
-                <span>1 DL</span>
-                <span>5 DLs</span>
-                <span>10 DLs</span>
-                <span>50 DLs</span>
-                <span>∞ (100)</span>
-              </div>
+                onChange={(e) => setMaxDownloads(Number(e.target.value))}
+                className="w-full bg-slate-950/40 text-xs text-white border border-brand-border focus:border-[#5eb075] focus:ring-1 focus:ring-[#5eb075]/10 rounded-xl px-4 py-2.5 outline-none transition-all font-mono"
+              >
+                <option value="1">1 Download</option>
+                <option value="5">5 Downloads</option>
+                <option value="10">10 Downloads</option>
+                <option value="50">50 Downloads</option>
+                <option value="100">Unlimited (100)</option>
+              </select>
             </div>
 
             <hr className="border-slate-800/40" />
@@ -325,7 +297,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
               <div className="flex items-center justify-between select-none">
                 <div className="flex items-center space-x-2 text-xs font-mono text-slate-400">
                   {usePassword ? (
-                    <Lock size={13} className="text-indigo-455" />
+                    <Lock size={13} className="text-[#5eb075]" />
                   ) : (
                     <Unlock size={13} className="text-slate-500" />
                   )}
@@ -338,7 +310,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
                     onChange={(e) => setUsePassword(e.target.checked)}
                     className="sr-only peer"
                   />
-                  <div className="w-8 h-4.5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-indigo-600 peer-checked:after:bg-white"></div>
+                  <div className="w-8 h-4.5 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-slate-400 after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-[#265c34] peer-checked:after:bg-white"></div>
                 </label>
               </div>
 
@@ -350,7 +322,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
                     required={usePassword}
-                    className="w-full bg-slate-950/40 text-xs text-white border border-brand-border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/10 rounded-xl px-4 py-2.5 outline-none transition-all placeholder:text-slate-500 font-mono"
+                    className="w-full bg-slate-950/40 text-xs text-white border border-brand-border focus:border-[#5eb075] focus:ring-1 focus:ring-[#5eb075]/10 rounded-xl px-4 py-2.5 outline-none transition-all placeholder:text-slate-500 font-mono"
                   />
                   <p className="text-[9px] text-slate-450 font-mono mt-1.5 leading-relaxed select-none">
                     * Sealed symmetrically inside your browser. Server never stores unencrypted metadata.
@@ -366,7 +338,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
             className={`w-full py-3.5 px-6 rounded-2xl flex items-center justify-center font-medium transition-all duration-200 shadow-lg ${
               files.length === 0
                 ? "bg-slate-900/50 text-slate-500 cursor-not-allowed border border-brand-border"
-                : "bg-indigo-600 hover:bg-indigo-500 active:scale-[0.99] text-white hover:shadow-md hover:shadow-indigo-600/20 cursor-pointer"
+                : "bg-[#265c34] hover:bg-[#347442] active:scale-[0.99] text-white hover:shadow-md hover:shadow-[#265c34]/20 cursor-pointer"
             }`}
           >
             {isCreating ? (

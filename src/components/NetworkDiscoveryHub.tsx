@@ -146,10 +146,10 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
       
       {/* Manual Unlock Widget */}
       <div className="glass-panel rounded-2xl p-6 shadow-xl">
-        <h3 className="text-xs font-mono text-indigo-400 uppercase tracking-wider font-extrabold mb-3 flex items-center">
+        <h3 className="text-xs font-mono text-[#7bd18f] uppercase tracking-wider font-extrabold mb-3 flex items-center">
           <KeyRound size={13} className="mr-2" /> Connect manually to secure locker
         </h3>
-        <p className="text-xs text-slate-400 mb-4 leading-normal select-none">
+        <p className="text-xs text-slate-450 mb-4 leading-normal select-none">
           Shared locker links contain the client decryption key in the hash chunk. Paste the complete link or input the Room Code below to sync.
         </p>
 
@@ -166,13 +166,13 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
                 setJoinValue(e.target.value);
                 setErrorMsg("");
               }}
-              className="w-full bg-slate-950/40 focus:bg-slate-950 text-xs text-white border border-brand-border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/10 rounded-xl pl-9.5 pr-4 py-3 outline-none transition-all placeholder:text-slate-500 font-mono"
+              className="w-full bg-slate-950/40 focus:bg-slate-950/60 text-xs text-white border border-brand-border focus:border-[#5eb075] focus:ring-1 focus:ring-[#5eb075]/10 rounded-xl pl-9.5 pr-4 py-3 outline-none transition-all placeholder:text-slate-500 font-mono"
             />
           </div>
 
           <button
             type="submit"
-            className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-mono font-bold tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 shadow-lg hover:shadow-indigo-600/10"
+            className="px-6 py-3 bg-[#265c34] hover:bg-[#347442] text-white text-xs font-mono font-bold tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1.5 shrink-0 shadow-lg hover:shadow-[#265c34]/15"
           >
             <span>CONNECT</span>
             <ArrowRight size={13} />
@@ -180,7 +180,7 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
         </form>
 
         {errorMsg && (
-          <div className="mt-3 flex items-center space-x-2 text-rose-400 text-xs font-mono bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg select-none">
+          <div className="mt-3 flex items-center space-x-2 text-rose-450 text-xs font-mono bg-rose-500/10 border border-rose-500/20 p-2.5 rounded-lg select-none">
             <AlertCircle size={13} />
             <span>{errorMsg}</span>
           </div>
@@ -190,13 +190,13 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
       {/* Discovered Locker List */}
       <div className="glass-panel rounded-2xl p-6 shadow-xl flex flex-col min-h-[300px]">
         <div className="flex justify-between items-center mb-4 select-none">
-          <h3 className="text-xs font-mono text-indigo-400 uppercase tracking-wider font-extrabold flex items-center">
+          <h3 className="text-xs font-mono text-[#7bd18f] uppercase tracking-wider font-extrabold flex items-center">
             <Radio size={13} className="mr-2 live-pulse" /> Active Local Network Lockers ({rooms.length})
           </h3>
           <button
             onClick={fetchRooms}
             type="button"
-            className="text-[10px] uppercase font-mono text-slate-450 hover:text-indigo-400 flex items-center cursor-pointer font-bold transition-colors"
+            className="text-[10px] uppercase font-mono text-slate-450 hover:text-[#7bd18f] flex items-center cursor-pointer font-bold transition-colors"
           >
             <RefreshCw size={10} className="mr-1.5" /> refresh
           </button>
@@ -204,7 +204,7 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
 
         {loading ? (
           <div className="flex-1 flex flex-col items-center justify-center py-10 select-none">
-            <span className="w-5 h-5 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin"></span>
+            <span className="w-5 h-5 border-2 border-slate-700 border-t-[#265c34] rounded-full animate-spin"></span>
             <span className="text-[10px] font-mono text-slate-400 mt-2.5 uppercase tracking-widest leading-none font-bold">Scanning local directory...</span>
           </div>
         ) : rooms.length === 0 ? (
@@ -227,7 +227,7 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
                 >
                   <div className="space-y-1.5 min-w-0 flex-1">
                     <div className="flex items-center gap-2.5 flex-wrap text-xs select-none">
-                      <span className="font-mono bg-indigo-500/10 border border-indigo-500/15 text-indigo-400 px-2 py-0.5 rounded-md font-bold text-[10px] tracking-wider">
+                      <span className="font-mono bg-[#265c34]/15 border border-[#265c34]/25 text-[#7bd18f] px-2 py-0.5 rounded-md font-bold text-[10px] tracking-wider">
                         VAULT {room.roomId}
                       </span>
                       {room.hasPassword && (
@@ -235,12 +235,12 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
                           <Lock size={9} className="mr-1" /> PASSWORD REQ
                         </span>
                       )}
-                      <span className="font-mono text-slate-450 text-[10.5px] flex items-center font-bold">
+                      <span className="font-mono text-slate-455 text-[10.5px] flex items-center font-bold">
                         <Clock size={11} className="mr-1 text-slate-500" /> {formatTimeout(room.expiresAt)}
                       </span>
                     </div>
 
-                    <div className="text-[11.5px] text-slate-400 font-mono flex items-center flex-wrap gap-x-3 gap-y-1">
+                    <div className="text-[11.5px] text-slate-455 font-mono flex items-center flex-wrap gap-x-3 gap-y-1">
                       <span className="text-slate-200 font-semibold truncate max-w-[210px] md:max-w-[290px]">
                         📁 {room.files[0]?.name || "Attachment"} {room.files.length > 1 && `+${room.files.length - 1} files`}
                       </span>
@@ -252,7 +252,7 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
                   <div className="shrink-0 flex items-center">
                     <button
                       onClick={() => handleJoinDiscovered(room)}
-                      className="w-full md:w-auto px-4 py-2 hover:py-2.1 bg-indigo-600/10 hover:bg-indigo-650 text-indigo-400 hover:text-white border border-indigo-500/25 hover:border-indigo-600 font-mono text-[10px] font-bold tracking-widest rounded-lg transition-all cursor-pointer flex items-center justify-center space-x-1 shadow-sm"
+                      className="w-full md:w-auto px-4 py-2 hover:py-2.1 bg-[#265c34]/15 hover:bg-[#265c34] text-[#7bd18f] hover:text-white border border-[#265c34]/25 hover:border-[#265c34] font-mono text-[10px] font-bold tracking-widest rounded-lg transition-all cursor-pointer flex items-center justify-center space-x-1 shadow-sm"
                     >
                       <span>SYNC FILES</span>
                       <ExternalLink size={10} />
@@ -268,11 +268,11 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
       {/* Symmetric Key Prompt Modal Overlay */}
       {selectedRoom && (
         <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
-          <div className="glass-panel border-t-2 border-t-indigo-500 rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
+          <div className="glass-panel border-t-2 border-t-[#265c34] rounded-2xl max-w-md w-full p-6 shadow-2xl space-y-5">
             <div className="flex justify-between items-start pb-1">
               <div>
                 <h4 className="text-sm font-extrabold text-white">Verify Decryption Shield</h4>
-                <p className="text-[9px] text-slate-450 font-mono uppercase tracking-widest mt-0.5 font-bold">Decrypting Locker {selectedRoom.roomId}</p>
+                <p className="text-[9px] text-slate-455 font-mono uppercase tracking-widest mt-0.5 font-bold">Decrypting Locker {selectedRoom.roomId}</p>
               </div>
               <button
                 onClick={() => setSelectedRoom(null)}
@@ -288,7 +288,7 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
 
             <form onSubmit={handleConfirmDiscoveredJoin} className="space-y-4">
               <div className="space-y-1.5">
-                <label className="text-[9.5px] font-mono text-slate-450 block uppercase tracking-widest font-bold">HEX Encryption Key or Share URL</label>
+                <label className="text-[9.5px] font-mono text-slate-455 block uppercase tracking-widest font-bold">HEX Encryption Key or Share URL</label>
                 <input
                   type="text"
                   placeholder="Paste shared URL containing key..."
@@ -299,19 +299,19 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
                     setKeyInput(e.target.value);
                     setPromptKeyError("");
                   }}
-                  className="w-full bg-slate-950/40 focus:bg-slate-950 text-xs text-white border border-brand-border focus:border-indigo-500 focus:ring-1 focus:ring-indigo-500/10 rounded-xl px-3.5 py-2.5 outline-none transition-all placeholder:text-slate-500 font-mono"
+                  className="w-full bg-slate-950/40 focus:bg-slate-950 text-xs text-white border border-brand-border focus:border-[#5eb075] focus:ring-1 focus:ring-[#5eb075]/10 rounded-xl px-3.5 py-2.5 outline-none transition-all placeholder:text-slate-500 font-mono"
                 />
               </div>
 
               {promptKeyError && (
-                <p className="text-[10px] text-rose-400 font-mono select-none flex items-center">
+                <p className="text-[10px] text-rose-455 font-mono select-none flex items-center">
                   <AlertCircle size={11} className="mr-1" /> {promptKeyError}
                 </p>
               )}
 
               <button
                 type="submit"
-                className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1 shadow-lg hover:shadow-indigo-600/10"
+                className="w-full py-3 bg-[#265c34] hover:bg-[#347442] text-white font-mono text-xs font-bold tracking-widest rounded-xl transition-all cursor-pointer flex items-center justify-center space-x-1 shadow-lg hover:shadow-[#265c34]/15"
               >
                 <span>VERIFY & DECRYPT STREAM</span>
                 <ArrowRight size={12} />

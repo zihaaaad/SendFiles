@@ -8,7 +8,6 @@ import {
   Wifi, 
   User, 
   Globe, 
-  Monitor, 
   Smartphone,
   Network, 
   RefreshCw,
@@ -20,15 +19,11 @@ import {
   Copy,
   UploadCloud,
   ChevronRight,
-  Info,
-  Search,
   Send,
   Lock,
   Unlock,
-  FolderLock,
   Compass,
   Cpu,
-  Terminal,
   ArrowLeft
 } from "lucide-react";
 import { getWebSocketURL, formatSpeed } from "./utils/webrtc-helper";
@@ -36,25 +31,25 @@ import { generateSecretKey, exportKeyToHex } from "./utils/crypto";
 import { P2PSender } from "./utils/p2p-engine";
 import { RoomDetails, TransferProgress } from "./types";
 
-// Import subcomponents
+// Import simplified subcomponents
 import CreateLocker from "./components/CreateLocker";
 import LockerDashboard from "./components/LockerDashboard";
 import NetworkDiscoveryHub from "./components/NetworkDiscoveryHub";
 import ReceptionPanel from "./components/ReceptionPanel";
 
-// Chunk size for direct WebSocket relay fallback: 60kb
+// Chunk size for direct WebSocket relay: 60kb
 const CHUNK_SIZE = 60000;
 
 const ADJECTIVES = [
-  "Cyber", "Stellar", "Cosmic", "Quantum", "Shadow", "Neon",
-  "Aero", "Hyper", "Vortex", "Dynamic", "Nexus", "Matrix",
-  "Apex", "Solar", "Glitch", "Cipher", "Swift", "Silent"
+  "Forest", "Cedar", "Mossy", "Fern", "Spruce", "Timber",
+  "Sage", "Hazel", "Willow", "Leafy", "Oak", "Alder",
+  "Pine", "Birch", "Maple", "Clay", "Canyon", "Summit"
 ];
 
 const ANIMALS = [
-  "Falcon", "Specter", "Dolphin", "Phoenix", "Lynx", "Tiger",
-  "Viper", "Raptor", "Grid", "Panda", "Ghost", "Sentinel",
-  "Cobra", "Titan", "Ranger", "Orbit", "Nova", "Nomad"
+  "Bear", "Eagle", "Otter", "Panda", "Lynx", "Tiger",
+  "Fox", "Koala", "Badger", "Owl", "Squirrel", "Falcon",
+  "Deer", "Wolf", "Beaver", "Rabbit", "Heron", "Hawk"
 ];
 
 interface DiscoveredPeer {
@@ -76,7 +71,7 @@ interface CreatedLocker {
 }
 
 export default function App() {
-  // 1. Identity Profiling
+  // 1. Identity Profiling (Forest-Themed)
   const [profileName, setProfileName] = useState<string>(() => {
     let user = localStorage.getItem("filedrop_operator_user");
     if (!user) {
@@ -100,7 +95,7 @@ export default function App() {
   const [view, setView] = useState<"home" | "sender-dashboard" | "receiver" | "error">("home");
   const [tab, setTab] = useState<"beam" | "vault-create" | "vault-discover">("beam");
 
-  // 3. Direct Beam (WebSocket Relay Mode) States
+  // 3. Direct Beam States
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
   const [myPublicIp, setMyPublicIp] = useState<string>("Detecting public IP...");
   const [socketStatus, setSocketStatus] = useState<"connecting" | "online" | "offline">("connecting");
@@ -141,7 +136,7 @@ export default function App() {
   const [isLockerVerified, setIsLockerVerified] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
 
-  // 5. Active references for WebSockets & engines
+  // 5. Active references
   const wsRef = useRef<WebSocket | null>(null);
   const activeSenderFileRef = useRef<File | null>(null);
   const senderAckPromiseResolver = useRef<((val: any) => void) | null>(null);
@@ -191,7 +186,6 @@ export default function App() {
           }
         }
       } else {
-        // Clear active receiver states and return home
         setView("home");
         setActiveRoomId(null);
         setActiveKeyHex("");
@@ -206,7 +200,7 @@ export default function App() {
   }, []);
 
   // ----------------------------------------------------
-  // Direct Beam WebSocket client connection
+  // Direct Beam WebSocket Connection
   // ----------------------------------------------------
   const connectSignaling = async () => {
     setSocketStatus("connecting");
@@ -226,7 +220,6 @@ export default function App() {
 
       ws.onclose = () => {
         setSocketStatus("offline");
-        // Reconnect after 3 seconds if we are still on the Home/Beam view
         setTimeout(() => {
           if (window.location.hash === "" || !window.location.hash.includes("/locker/")) {
             connectSignaling();
@@ -335,13 +328,11 @@ export default function App() {
     setProfileName(newName);
   };
 
-  // Direct Beam Selection & streaming triggers
   const handleSelectFile = (file: File) => {
     if (!selectedRecipientId) return;
     
     const count = Math.ceil(file.size / CHUNK_SIZE);
     activeSenderFileRef.current = file;
-
     const recipient = peers.find(p => p.peerId === selectedRecipientId);
     
     setSenderTransfer({
@@ -415,7 +406,7 @@ export default function App() {
             senderAckPromiseResolver.current = null;
             resolve();
           }
-        }, 80); // Throttling fallback
+        }, 80);
       });
     }
 
@@ -534,11 +525,9 @@ export default function App() {
   }) => {
     setIsCreatingLocker(true);
     try {
-      // 1. Generate client-side cryptographic key
       const cryptoKey = await generateSecretKey();
       const keyHex = await exportKeyToHex(cryptoKey);
       
-      // 2. Register locker room on backend
       const res = await fetch("/api/rooms", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -556,7 +545,6 @@ export default function App() {
       
       const roomInfo = await res.json();
       
-      // 3. Setup WebRTC P2P Sender
       const sender = new P2PSender(roomInfo.roomId, files, cryptoKey);
       p2pSenderRef.current = sender;
       
@@ -573,7 +561,6 @@ export default function App() {
         peerProgressList: new Map()
       });
       
-      // Wire up engine status and log listeners
       sender.onLogMessage = (msg) => {
         const timestamp = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
         setCreatedLockerData(prev => {
@@ -597,10 +584,8 @@ export default function App() {
           const nextProgress = new Map(prev.peerProgressList);
           nextProgress.set(peerId, progress);
           
-          // Dynamically check if this progress update includes download completeness
           let nextDlCount = prev.downloadCount;
           if (progress.status === "complete") {
-             // Incremented locally to update visual counts instantly
              nextDlCount = Math.min(prev.maxDownloads, prev.downloadCount + 1);
           }
           
@@ -612,7 +597,6 @@ export default function App() {
         });
       };
       
-      // 4. Start sender WebSocket signaling client
       sender.start();
       setView("sender-dashboard");
       
@@ -638,7 +622,6 @@ export default function App() {
     window.location.hash = `/locker/${roomId}#key=${keyHex}`;
   };
 
-  // Utils helpers
   const formatBytes = (bytes: number) => {
     if (bytes === 0) return "0 B";
     const k = 1024;
@@ -657,37 +640,37 @@ export default function App() {
   const globalPeers = peers.filter(p => p.ip !== myPublicIp);
 
   // ----------------------------------------------------
-  // Main Rendering Pipelines
+  // Main Layout Render
   // ----------------------------------------------------
   return (
-    <div className="min-h-screen bg-brand-bg text-[#CBD5E1] flex flex-col font-sans antialiased relative overflow-x-hidden selection:bg-indigo-600/40 pb-12">
+    <div className="min-h-screen bg-brand-bg text-[#E2E8F0] flex flex-col font-sans antialiased relative overflow-x-hidden pb-10">
       
-      {/* Background glow effects */}
-      <div className="absolute top-[-10%] left-[20%] w-[600px] h-[600px] bg-indigo-600/10 rounded-full blur-[160px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[10%] w-[500px] h-[500px] bg-emerald-600/5 rounded-full blur-[140px] pointer-events-none" />
+      {/* Background ambient lighting */}
+      <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-[#265c34]/5 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#265c34]/5 rounded-full blur-[120px] pointer-events-none" />
 
-      {/* Header element */}
-      <header className="relative w-full z-10 border-b border-brand-border bg-brand-bg/60 backdrop-blur-md">
-        <div className="max-w-6xl mx-auto px-6 h-18 flex items-center justify-between">
+      {/* Header */}
+      <header className="relative w-full z-10 border-b border-brand-border bg-brand-bg/40 backdrop-blur-md">
+        <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           
-          <div className="flex items-center space-x-3 select-none">
-            <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-indigo-500 flex items-center justify-center text-white shadow-lg shadow-indigo-600/25">
-              <Network size={18} className="animate-pulse" />
+          <div className="flex items-center space-x-2.5 select-none">
+            <div className="w-8 h-8 rounded-lg bg-gradient-to-tr from-[#265c34] to-[#4c905c] flex items-center justify-center text-white shadow-md">
+              <Network size={16} className="animate-pulse" />
             </div>
             <div>
-              <span className="text-sm font-extrabold tracking-wider text-white uppercase block">SendFiles P2P</span>
-              <span className="text-[9px] font-mono text-indigo-400 tracking-widest uppercase block -mt-1 font-bold">End-to-End Cryptographic Portal</span>
+              <span className="text-xs font-bold tracking-wider text-white uppercase block">SendFiles P2P</span>
+              <span className="text-[8.5px] font-mono text-[#7bd18f] tracking-widest uppercase block -mt-1 font-bold">Secure Direct P2P File Sharing</span>
             </div>
           </div>
 
-          <div className="flex items-center space-x-6">
+          <div className="flex items-center space-x-4">
             {view === "home" && tab === "beam" && (
-              <div className="flex items-center space-x-2">
-                <span className={`w-2.5 h-2.5 rounded-full ${
-                  socketStatus === "online" ? "bg-emerald-500 glow-box" : socketStatus === "connecting" ? "bg-amber-400 animate-pulse" : "bg-rose-500"
+              <div className="flex items-center space-x-1.5">
+                <span className={`w-2 h-2 rounded-full ${
+                  socketStatus === "online" ? "bg-emerald-400 live-pulse" : socketStatus === "connecting" ? "bg-amber-400 animate-pulse" : "bg-rose-500"
                 }`} />
-                <span className="text-[10px] font-mono text-[#94A3B8] font-bold tracking-widest uppercase">
-                  {socketStatus === "online" ? "DISCOVERY ONLINE" : socketStatus === "connecting" ? "SYNCING HUB..." : "OFFLINE"}
+                <span className="text-[8.5px] font-mono text-slate-400 font-bold tracking-wider uppercase">
+                  {socketStatus === "online" ? "Active" : socketStatus === "connecting" ? "Syncing..." : "Offline"}
                 </span>
               </div>
             )}
@@ -701,9 +684,9 @@ export default function App() {
                      window.location.hash = "";
                   }
                 }}
-                className="flex items-center text-xs font-mono font-bold tracking-wider hover:text-white text-indigo-400 cursor-pointer transition-colors"
+                className="flex items-center text-[10.5px] font-mono font-bold tracking-wider hover:text-white text-[#7bd18f] cursor-pointer transition-colors"
               >
-                <ArrowLeft size={14} className="mr-1.5" /> Return Home
+                <ArrowLeft size={12} className="mr-1" /> Back
               </button>
             )}
           </div>
@@ -712,189 +695,160 @@ export default function App() {
       </header>
 
       {/* Main Container */}
-      <main className="relative flex-1 z-10 max-w-5xl w-full mx-auto px-6 py-8">
+      <main className="relative flex-1 z-10 max-w-2xl w-full mx-auto px-4 py-6">
         
         {/* VIEW A: HOME DASHBOARD */}
         {view === "home" && (
-          <div className="space-y-6">
-            {/* Identity Banner */}
-            <div className="glass-panel rounded-2xl p-5 flex flex-col md:flex-row items-center justify-between gap-4 shadow-xl">
-              <div className="flex items-center space-x-4">
-                <div className="w-11 h-11 bg-indigo-500/10 text-indigo-400 rounded-xl flex items-center justify-center border border-indigo-500/15">
-                  <User size={20} />
+          <div className="space-y-5">
+            {/* Identity card */}
+            <div className="glass-panel rounded-xl p-4 flex items-center justify-between gap-3 shadow-md">
+              <div className="flex items-center space-x-3 min-w-0">
+                <div className="w-9 h-9 bg-[#265c34]/15 text-[#7bd18f] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/20">
+                  <User size={16} />
                 </div>
-                <div>
-                  <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest font-bold">Node Operator Identity</span>
-                  <span className="text-base font-extrabold text-white block mt-0.5">{profileName}</span>
+                <div className="min-w-0">
+                  <span className="text-[8.5px] font-mono text-slate-450 uppercase tracking-widest font-bold block">Your Device ID</span>
+                  <span className="text-sm font-extrabold text-white block truncate">{profileName}</span>
                 </div>
               </div>
 
-              <div className="flex items-center gap-3">
-                <button
-                  onClick={handleRegenName}
-                  className="px-4 py-2 text-xs font-mono font-bold text-slate-350 hover:text-white border border-brand-border bg-slate-900/40 hover:bg-slate-900/80 rounded-xl transition-all cursor-pointer flex items-center gap-2"
-                >
-                  <RefreshCw size={12} className="animate-spin-slow" /> Reset Username
-                </button>
-              </div>
+              <button
+                onClick={handleRegenName}
+                className="px-3 py-1.5 text-[10px] font-mono font-bold text-slate-300 hover:text-white border border-brand-border bg-slate-900/40 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+              >
+                <RefreshCw size={11} className="animate-spin-slow" /> Change
+              </button>
             </div>
 
-            {/* Premium Routing Navigation tabs */}
-            <div className="grid grid-cols-3 gap-2 p-1.5 bg-slate-900/40 rounded-2xl border border-brand-border select-none">
+            {/* Simple Mobile Tab Navigation */}
+            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950/40 rounded-xl border border-brand-border select-none">
               <button
                 onClick={() => setTab("beam")}
-                className={`py-3 rounded-xl text-xs font-mono tracking-widest font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`py-2.5 rounded-lg text-[10px] font-mono tracking-wider font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   tab === "beam"
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/30"
+                    ? "bg-[#265c34] text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                <Cpu size={14} /> Direct Beam
+                <Cpu size={12} /> Direct Share
               </button>
               <button
                 onClick={() => setTab("vault-create")}
-                className={`py-3 rounded-xl text-xs font-mono tracking-widest font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`py-2.5 rounded-lg text-[10px] font-mono tracking-wider font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   tab === "vault-create"
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/30"
+                    ? "bg-[#265c34] text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                <Lock size={14} /> Create Vault
+                <Lock size={12} /> Create Link
               </button>
               <button
                 onClick={() => setTab("vault-discover")}
-                className={`py-3 rounded-xl text-xs font-mono tracking-widest font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-2 ${
+                className={`py-2.5 rounded-lg text-[10px] font-mono tracking-wider font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   tab === "vault-discover"
-                    ? "bg-indigo-600 text-white shadow-md shadow-indigo-600/20"
-                    : "text-slate-400 hover:text-white hover:bg-slate-800/30"
+                    ? "bg-[#265c34] text-white shadow-sm"
+                    : "text-slate-400 hover:text-white"
                 }`}
               >
-                <Compass size={14} /> Discover Vaults
+                <Compass size={12} /> Receive Code
               </button>
             </div>
 
             {/* TAB CONTENTS */}
             
-            {/* 1. Direct Beam panel */}
+            {/* 1. Direct Share Tab */}
             {tab === "beam" && senderTransfer === null && (
-              <div className="space-y-6">
+              <div className="space-y-5">
                 
-                {/* Guide panel */}
-                <div className="glass-panel p-6 rounded-2xl grid grid-cols-1 md:grid-cols-3 gap-4">
-                  <div className="bg-slate-900/30 p-4 rounded-xl border border-brand-border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-xs font-mono font-bold">1</span>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Connect Devices</h4>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-normal">
-                      Open <span className="font-mono text-indigo-300 font-bold">{window.location.host}</span> on your sender/receiver device on the same local network.
-                    </p>
-                  </div>
-                  
-                  <div className="bg-slate-900/30 p-4 rounded-xl border border-brand-border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-xs font-mono font-bold">2</span>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Discover Peers</h4>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-normal">
-                      Your devices will instantly pair. Tell the sender to look for receiver username: <span className="font-semibold text-white">{profileName}</span>.
-                    </p>
-                  </div>
-
-                  <div className="bg-slate-900/30 p-4 rounded-xl border border-brand-border">
-                    <div className="flex items-center gap-2 mb-2">
-                      <span className="w-6 h-6 rounded-lg bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 flex items-center justify-center text-xs font-mono font-bold">3</span>
-                      <h4 className="text-xs font-bold text-white uppercase tracking-wider">Relay Files</h4>
-                    </div>
-                    <p className="text-[11px] text-slate-400 leading-normal">
-                      Tap the recipient node, select a file, and stream it securely. No servers involved in local paths.
-                    </p>
-                  </div>
+                {/* Guide Panel */}
+                <div className="glass-panel p-4.5 rounded-xl space-y-2.5 select-none">
+                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">How to send files</h3>
+                  <p className="text-xs text-slate-400 leading-relaxed leading-normal">
+                    Open this page on another device. Ensure both are online. Your devices will automatically detect each other below. Click the recipient to select a file and send.
+                  </p>
                 </div>
 
                 {/* Recipient list */}
-                <div className="space-y-4">
+                <div className="space-y-3">
                   <div className="flex justify-between items-center select-none pl-1">
-                    <span className="text-[10px] font-mono text-slate-400 uppercase tracking-widest font-black flex items-center">
-                      <Wifi size={13} className="mr-2 text-indigo-450 live-pulse" /> Active Discovery Registry
+                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest font-black flex items-center">
+                      <Wifi size={11} className="mr-1.5 text-[#7bd18f] live-pulse" /> Discovered Devices
                     </span>
-                    <span className="text-[10px] font-mono text-slate-400 font-bold">{peers.length} active node{peers.length !== 1 && "s"}</span>
+                    <span className="text-[9px] font-mono text-slate-400 font-bold">{peers.length} active</span>
                   </div>
 
                   {peers.length === 0 ? (
-                    <div className="glass-panel rounded-2xl p-10 text-center space-y-6">
-                      <div className="w-14 h-14 bg-slate-900/80 rounded-2xl border border-brand-border flex items-center justify-center mx-auto text-slate-400 shadow-inner">
-                        <Monitor size={24} className="text-slate-500" />
+                    <div className="glass-panel rounded-xl p-8 text-center space-y-4">
+                      <div className="w-10 h-10 bg-slate-900/40 rounded-xl border border-brand-border flex items-center justify-center mx-auto text-slate-450 shadow-inner">
+                        <Smartphone size={18} />
                       </div>
-                      <div className="space-y-2 max-w-sm mx-auto">
-                        <h3 className="text-sm font-bold text-white">Awaiting Connection Nodes...</h3>
-                        <p className="text-xs text-slate-450 leading-relaxed font-medium">
-                          Open this URL on another device in the same network or share the app URL to pair instantly.
+                      <div className="space-y-1.5 max-w-sm mx-auto">
+                        <h3 className="text-xs font-bold text-white">Waiting for other devices...</h3>
+                        <p className="text-[11px] text-slate-450 leading-relaxed font-medium">
+                          Open this URL on your phone or tablet to pair instantly.
                         </p>
                       </div>
                       
                       <button
                         onClick={handleCopyAppUrl}
-                        className="px-5 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold tracking-wider rounded-xl transition-all cursor-pointer inline-flex items-center gap-2 shadow-lg shadow-indigo-600/20"
+                        className="px-4 py-2 bg-[#265c34] hover:bg-[#347442] text-white font-mono text-[10px] font-bold tracking-wider rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
                       >
-                        <Copy size={13} />
-                        <span>{copiedLink ? "LINK COPIED!" : "COPY SHARABLE URL"}</span>
+                        <Copy size={11} />
+                        <span>{copiedLink ? "LINK COPIED!" : "COPY LINK"}</span>
                       </button>
                     </div>
                   ) : (
-                    <div className="space-y-4">
-                      {/* Local network matching IP */}
+                    <div className="space-y-3">
                       {localPeers.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="text-[9px] font-mono text-indigo-400 font-bold uppercase tracking-widest block pl-1">Local Network (Nearby IP)</span>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <span className="text-[8.5px] font-mono text-[#7bd18f] font-bold uppercase tracking-widest block pl-1">Nearby Devices</span>
+                          <div className="grid grid-cols-1 gap-2">
                             {localPeers.map(peer => (
                               <button
                                 key={peer.peerId}
                                 onClick={() => setSelectedRecipientId(peer.peerId)}
-                                className={`w-full glass-panel hover:bg-slate-900/20 text-left p-5 rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all ${
-                                  selectedRecipientId === peer.peerId ? "ring-2 ring-indigo-500 border-indigo-500/40 bg-indigo-500/5" : ""
+                                className={`w-full glass-panel hover:bg-slate-900/10 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/50 bg-[#265c34]/5" : ""
                                 }`}
                               >
-                                <div className="flex items-center space-x-4 min-w-0">
-                                  <div className="w-10 h-10 bg-indigo-500/10 text-indigo-400 rounded-xl flex items-center justify-center shrink-0 border border-indigo-500/20">
-                                    <Smartphone size={18} />
+                                <div className="flex items-center space-x-3 min-w-0">
+                                  <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/25">
+                                    <Smartphone size={14} />
                                   </div>
                                   <div className="min-w-0">
                                     <span className="text-xs font-extrabold text-white block truncate">{peer.name}</span>
-                                    <span className="text-[9px] font-mono text-slate-450 block uppercase mt-0.5 tracking-wider">Nearby Node • Click to beam</span>
+                                    <span className="text-[9px] font-mono text-slate-450 block uppercase tracking-wider">Tap to share file</span>
                                   </div>
                                 </div>
-                                <ChevronRight size={14} className="text-slate-500" />
+                                <ChevronRight size={12} className="text-slate-500" />
                               </button>
                             ))}
                           </div>
                         </div>
                       )}
 
-                      {/* Global / Remote network */}
                       {globalPeers.length > 0 && (
-                        <div className="space-y-2">
-                          <span className="text-[9px] font-mono text-slate-400 font-bold uppercase tracking-widest block pl-1">Remote Network (Global IP)</span>
-                          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <span className="text-[8.5px] font-mono text-slate-450 font-bold uppercase tracking-widest block pl-1">Remote Devices</span>
+                          <div className="grid grid-cols-1 gap-2">
                             {globalPeers.map(peer => (
                               <button
                                 key={peer.peerId}
                                 onClick={() => setSelectedRecipientId(peer.peerId)}
-                                className={`w-full glass-panel hover:bg-slate-900/20 text-left p-5 rounded-2xl flex items-center justify-between gap-4 cursor-pointer transition-all ${
-                                  selectedRecipientId === peer.peerId ? "ring-2 ring-indigo-500 border-indigo-500/40 bg-indigo-500/5" : ""
+                                className={`w-full glass-panel hover:bg-slate-900/10 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/50 bg-[#265c34]/5" : ""
                                 }`}
                               >
-                                <div className="flex items-center space-x-4 min-w-0">
-                                  <div className="w-10 h-10 bg-indigo-500/10 text-indigo-400 rounded-xl flex items-center justify-center shrink-0 border border-indigo-500/20">
-                                    <Globe size={18} />
+                                <div className="flex items-center space-x-3 min-w-0">
+                                  <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/25">
+                                    <Globe size={14} />
                                   </div>
                                   <div className="min-w-0">
                                     <span className="text-xs font-extrabold text-white block truncate">{peer.name}</span>
-                                    <span className="text-[9px] font-mono text-slate-450 block mt-0.5 uppercase tracking-wider">Remote Node • Internet Connection</span>
+                                    <span className="text-[9px] font-mono text-slate-450 block uppercase tracking-wider">Remote Connection</span>
                                   </div>
                                 </div>
-                                <ChevronRight size={14} className="text-slate-500" />
+                                <ChevronRight size={12} className="text-slate-500" />
                               </button>
                             ))}
                           </div>
@@ -905,23 +859,23 @@ export default function App() {
 
                   {/* File Selector Zone */}
                   {selectedRecipientId && (
-                    <div className="glass-panel border-t-2 border-t-indigo-500 rounded-2xl p-6 shadow-2xl space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-255">
-                      <div className="flex justify-between items-center pb-2 select-none">
+                    <div className="glass-panel border-t-2 border-t-[#265c34] rounded-xl p-4.5 shadow-xl space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
+                      <div className="flex justify-between items-center pb-1 select-none">
                         <div>
-                          <span className="text-[10px] font-mono text-indigo-400 uppercase tracking-widest font-bold">Beam Destination</span>
-                          <h3 className="text-sm font-extrabold text-white mt-0.5">
-                            Target Peer: {peers.find(p => p.peerId === selectedRecipientId)?.name || "Device"}
+                          <span className="text-[8.5px] font-mono text-[#7bd18f] uppercase tracking-wider font-bold">Recipient Selected</span>
+                          <h3 className="text-xs font-extrabold text-white mt-0.5">
+                            Send to: {peers.find(p => p.peerId === selectedRecipientId)?.name || "Device"}
                           </h3>
                         </div>
                         <button
                           onClick={() => setSelectedRecipientId(null)}
-                          className="text-slate-400 hover:text-white p-1.5 rounded-lg bg-slate-900/40 hover:bg-slate-900/90 border border-brand-border cursor-pointer transition-colors"
+                          className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-900/40 border border-brand-border cursor-pointer"
                         >
-                          <X size={14} />
+                          <X size={12} />
                         </button>
                       </div>
 
-                      <div className="border border-dashed border-slate-700 bg-slate-900/20 hover:bg-slate-900/40 rounded-xl p-8 text-center cursor-pointer transition-all relative">
+                      <div className="border border-dashed border-slate-700 bg-slate-900/20 hover:bg-slate-900/40 rounded-lg p-6 text-center cursor-pointer transition-all relative">
                         <input
                           type="file"
                           id="direct-file-selector"
@@ -932,12 +886,12 @@ export default function App() {
                           }}
                           className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                         />
-                        <div className="w-10 h-10 bg-indigo-500/10 text-indigo-400 rounded-full flex items-center justify-center mx-auto mb-3 border border-indigo-500/25">
-                          <UploadCloud size={18} />
+                        <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] rounded-full flex items-center justify-center mx-auto mb-2 border border-[#265c34]/20">
+                          <UploadCloud size={14} />
                         </div>
                         <div>
-                          <p className="text-xs font-extrabold text-white">Choose File or Drop Here</p>
-                          <p className="text-[10px] text-slate-400 font-mono mt-1">Files are read as binary slices and relayed instantly</p>
+                          <p className="text-xs font-bold text-white">Select File or Drop Here</p>
+                          <p className="text-[9.5px] text-slate-450 font-mono mt-0.5">Sends directly over local connection</p>
                         </div>
                       </div>
                     </div>
@@ -947,60 +901,53 @@ export default function App() {
               </div>
             )}
 
-            {/* Direct Beam streaming UI (Active transfer) */}
+            {/* Direct share transfer progress */}
             {tab === "beam" && senderTransfer !== null && (
-              <div className="glass-panel rounded-2xl p-6 max-w-xl mx-auto shadow-2xl space-y-6">
-                <div className="text-center space-y-1.5">
-                  <span className="text-[9px] font-mono text-indigo-400 uppercase tracking-widest font-black block">Active Beam Tunnel</span>
-                  <h2 className="text-base font-extrabold text-white">
-                    {senderTransfer.status === "waiting-acceptance" ? `Awaiting receiver authorization...` : `Beaming data blocks...`}
+              <div className="glass-panel rounded-xl p-5 shadow-xl space-y-4">
+                <div className="text-center space-y-1">
+                  <span className="text-[9px] font-mono text-[#7bd18f] uppercase tracking-wider font-bold block">File Transfer status</span>
+                  <h2 className="text-xs font-extrabold text-white">
+                    {senderTransfer.status === "waiting-acceptance" ? `Waiting for receiver to accept...` : `Transferring file...`}
                   </h2>
                 </div>
 
-                <div className="bg-slate-900/30 rounded-xl p-4 border border-brand-border flex items-center space-x-4">
-                  <div className="w-11 h-11 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg flex items-center justify-center shrink-0">
-                    <FileText size={20} />
+                <div className="bg-slate-900/30 rounded-lg p-3 border border-brand-border flex items-center space-x-3">
+                  <div className="w-9 h-9 bg-[#265c34]/15 text-[#7bd18f] border border-[#265c34]/20 rounded-lg flex items-center justify-center shrink-0">
+                    <FileText size={16} />
                   </div>
                   <div className="min-w-0 flex-1">
                     <p className="text-xs font-bold text-white truncate">{senderTransfer.fileName}</p>
-                    <div className="flex items-center space-x-2.5 text-[10px] font-mono text-slate-400 mt-1">
-                      <span>Size: {formatBytes(senderTransfer.fileSize)}</span>
-                      <span>•</span>
-                      <span className="text-indigo-300">To: {senderTransfer.peerName}</span>
-                    </div>
+                    <p className="text-[9.5px] font-mono text-slate-450 mt-0.5">
+                      Size: {formatBytes(senderTransfer.fileSize)} • To: {senderTransfer.peerName}
+                    </p>
                   </div>
                 </div>
 
-                {/* Waiting State Spinner */}
                 {senderTransfer.status === "waiting-acceptance" && (
-                  <div className="flex flex-col items-center justify-center py-6 space-y-4">
-                    <span className="relative flex h-6 w-6">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-indigo-400 opacity-75"></span>
-                      <span className="relative inline-flex rounded-full h-6 w-6 bg-indigo-600 glow-box"></span>
+                  <div className="flex flex-col items-center justify-center py-2 space-y-3">
+                    <span className="relative flex h-5 w-5">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="relative inline-flex rounded-full h-5 w-5 bg-[#265c34] glow-box"></span>
                     </span>
-                    <p className="text-[10px] font-mono text-slate-400 text-center uppercase tracking-wider max-w-[280px]">
-                      Waiting for recipient device to accept the connection offer...
-                    </p>
                     <button
                       onClick={cancelSenderFlow}
-                      className="px-5 py-2.5 bg-slate-900/80 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-brand-border hover:border-rose-500/30 font-mono text-[10px] font-bold rounded-lg cursor-pointer transition-all uppercase"
+                      className="px-4 py-2 bg-slate-900/80 hover:bg-rose-500/10 hover:text-rose-400 text-slate-400 border border-brand-border hover:border-rose-500/20 font-mono text-[9px] font-bold rounded-lg cursor-pointer transition-all uppercase"
                     >
-                      Cancel Beam
+                      Cancel Transfer
                     </button>
                   </div>
                 )}
 
-                {/* Transferring State bar */}
                 {senderTransfer.status === "transferring" && (
-                  <div className="space-y-4 py-2">
-                    <div className="space-y-2 font-mono text-[11px] text-slate-350">
+                  <div className="space-y-3 py-1">
+                    <div className="space-y-1.5 font-mono text-[10px] text-slate-400">
                       <div className="flex justify-between font-bold">
                         <span>Speed: {formatSpeed(senderTransfer.speed)}</span>
                         <span className="text-white">{senderTransfer.percent}%</span>
                       </div>
-                      <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-brand-border shadow-inner">
+                      <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-brand-border shadow-inner">
                         <div 
-                          className="bg-indigo-600 h-full rounded-full transition-all duration-100 glow-box" 
+                          className="bg-[#265c34] h-full rounded-full transition-all duration-100 glow-box" 
                           style={{ width: `${senderTransfer.percent}%` }}
                         />
                       </div>
@@ -1009,46 +956,44 @@ export default function App() {
                     <div className="text-center">
                       <button
                         onClick={cancelSenderFlow}
-                        className="px-5 py-2.5 bg-slate-900/80 hover:bg-rose-500/20 hover:text-rose-400 text-slate-400 border border-brand-border hover:border-rose-500/30 font-mono text-[10px] font-bold rounded-lg cursor-pointer transition-all uppercase"
+                        className="px-4 py-2 bg-slate-900/80 hover:bg-rose-500/10 hover:text-rose-400 text-slate-400 border border-brand-border hover:border-rose-500/20 font-mono text-[9px] font-bold rounded-lg cursor-pointer transition-all uppercase"
                       >
-                        Abort Stream
+                        Cancel
                       </button>
                     </div>
                   </div>
                 )}
 
-                {/* Transfer Success */}
                 {senderTransfer.status === "success" && (
-                  <div className="flex flex-col items-center justify-center py-4 space-y-4 text-center">
-                    <div className="w-11 h-11 bg-emerald-500/15 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
-                      <Check size={20} />
+                  <div className="flex flex-col items-center justify-center py-2 space-y-3 text-center">
+                    <div className="w-9 h-9 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
+                      <Check size={16} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-extrabold text-white">Beam Transfer Accomplished!</h4>
-                      <p className="text-[9.5px] font-mono text-slate-450 mt-1 leading-normal uppercase">Binary segments assembled directly in recipient memory</p>
+                      <h4 className="text-xs font-bold text-white">Transfer Completed!</h4>
+                      <p className="text-[9px] font-mono text-slate-450 mt-1 uppercase">File sent successfully to receiver</p>
                     </div>
                     <button
                       onClick={() => setSenderTransfer(null)}
-                      className="px-6 py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold tracking-wider rounded-xl cursor-pointer transition-all uppercase"
+                      className="px-5 py-2.5 bg-[#265c34] hover:bg-[#347442] text-white font-mono text-[10px] font-bold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
                     >
-                      Return to registry
+                      Done
                     </button>
                   </div>
                 )}
 
-                {/* Declined offer */}
                 {senderTransfer.status === "declined" && (
-                  <div className="flex flex-col items-center justify-center py-4 space-y-4 text-center">
-                    <div className="w-11 h-11 bg-rose-500/15 text-rose-450 border border-rose-500/20 rounded-full flex items-center justify-center">
-                      <X size={20} />
+                  <div className="flex flex-col items-center justify-center py-2 space-y-3 text-center">
+                    <div className="w-9 h-9 bg-rose-500/10 text-rose-450 border border-rose-500/20 rounded-full flex items-center justify-center">
+                      <X size={16} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-extrabold text-white">Transfer Declined</h4>
-                      <p className="text-[9.5px] font-mono text-slate-450 mt-1 uppercase">The recipient denied the incoming beam file payload.</p>
+                      <h4 className="text-xs font-bold text-white">Transfer Declined</h4>
+                      <p className="text-[9px] font-mono text-slate-450 mt-1 uppercase">The recipient declined your file.</p>
                     </div>
                     <button
                       onClick={() => setSenderTransfer(null)}
-                      className="px-6 py-2.5 bg-slate-900 border border-brand-border hover:bg-slate-800 text-slate-350 font-mono text-xs font-bold tracking-wider rounded-xl cursor-pointer transition-all uppercase"
+                      className="px-5 py-2 bg-slate-900 border border-brand-border hover:bg-slate-800 text-slate-350 font-mono text-[10px] font-bold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
                     >
                       Dismiss
                     </button>
@@ -1057,12 +1002,12 @@ export default function App() {
               </div>
             )}
 
-            {/* 2. Create Locker Panel */}
+            {/* 2. Create Lock Link (Locker Creation) */}
             {tab === "vault-create" && (
               <CreateLocker onLockerCreated={handleLockerCreated} isCreating={isCreatingLocker} />
             )}
 
-            {/* 3. Discover Lockers Panel */}
+            {/* 3. Receive Code (Manual Locker Connection) */}
             {tab === "vault-discover" && (
               <NetworkDiscoveryHub onJoinRoom={handleJoinRoom} />
             )}
@@ -1070,7 +1015,7 @@ export default function App() {
           </div>
         )}
 
-        {/* VIEW B: SENDER LOCKER DASHBOARD */}
+        {/* VIEW B: SENDER VAULT DASHBOARD */}
         {view === "sender-dashboard" && createdLockerData && (
           <LockerDashboard
             roomId={createdLockerData.roomId}
@@ -1097,15 +1042,15 @@ export default function App() {
           />
         )}
 
-        {/* VIEW D: FAULT PAGE */}
+        {/* VIEW D: ERROR SCREEN */}
         {view === "error" && (
-          <div className="glass-panel max-w-md mx-auto p-8 text-center rounded-2xl shadow-2xl space-y-6">
-            <div className="w-14 h-14 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-2xl flex items-center justify-center mx-auto shadow-inner">
-              <AlertCircle size={24} />
+          <div className="glass-panel max-w-sm mx-auto p-6 text-center rounded-xl shadow-xl space-y-5 select-none">
+            <div className="w-11 h-11 bg-rose-500/10 border border-rose-500/20 text-rose-500 rounded-xl flex items-center justify-center mx-auto">
+              <AlertCircle size={20} />
             </div>
-            <div className="space-y-2 select-none">
-              <h3 className="text-sm font-extrabold text-white uppercase tracking-wider">Secure Connection Failed</h3>
-              <p className="text-xs text-slate-450 leading-relaxed font-medium">
+            <div className="space-y-1">
+              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Locker link error</h3>
+              <p className="text-[11px] text-slate-450 leading-relaxed font-medium">
                 {errorMsg || "The locker envelope requested has expired, is deleted, or does not exist."}
               </p>
             </div>
@@ -1114,90 +1059,85 @@ export default function App() {
                 window.location.hash = "";
                 setView("home");
               }}
-              className="px-6 py-3 bg-slate-900 border border-brand-border hover:bg-slate-800 text-slate-350 hover:text-white font-mono text-xs font-bold rounded-xl transition-all cursor-pointer inline-flex items-center gap-2"
+              className="px-5 py-2.5 bg-slate-900 border border-brand-border hover:bg-slate-800 text-slate-350 hover:text-white font-mono text-[10px] font-bold rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
             >
-              <ArrowLeft size={13} />
-              <span>RETURN TO PORTAL</span>
+              <ArrowLeft size={11} className="mr-1" />
+              <span>RETURN</span>
             </button>
           </div>
         )}
 
       </main>
 
-      {/* Recipient incoming modal card overlay (Direct Beam) */}
+      {/* Recipient incoming modal offer card */}
       {receiverTransfer !== null && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-6 animate-in fade-in duration-200">
-          <div className="glass-panel border-t-2 border-t-indigo-500 rounded-2xl max-w-sm w-full p-6 shadow-2xl space-y-6">
+        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+          <div className="glass-panel border-t-2 border-t-[#265c34] rounded-xl max-w-xs w-full p-5 shadow-2xl space-y-4">
             
             <div className="text-center space-y-1 select-none">
-              <span className="text-[9px] font-mono text-indigo-400 block uppercase font-black tracking-widest">Incoming Beam Request</span>
-              <h3 className="text-sm font-extrabold text-white">
-                {receiverTransfer.status === "offered" ? "Accept this file?" : "Streaming segment blocks..."}
+              <span className="text-[8.5px] font-mono text-[#7bd18f] block uppercase font-black tracking-wider">Incoming File Offer</span>
+              <h3 className="text-xs font-bold text-white">
+                {receiverTransfer.status === "offered" ? "Receive this file?" : "Receiving file..."}
               </h3>
             </div>
 
-            <div className="bg-slate-900/30 border border-brand-border p-4 rounded-xl flex items-center space-x-3.5">
-              <div className="w-10 h-10 bg-indigo-500/10 text-indigo-400 border border-indigo-500/20 rounded-lg flex items-center justify-center shrink-0">
-                <FileText size={18} />
+            <div className="bg-slate-900/30 border border-brand-border p-3 rounded-lg flex items-center space-x-3">
+              <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] border border-[#265c34]/20 rounded-lg flex items-center justify-center shrink-0">
+                <FileText size={16} />
               </div>
               <div className="min-w-0 flex-1">
                 <p className="text-xs font-bold text-white truncate">{receiverTransfer.fileName}</p>
-                <div className="flex items-center space-x-2.5 text-[10px] font-mono text-slate-455 mt-1 leading-none font-medium">
-                  <span>Size: {formatBytes(receiverTransfer.fileSize)}</span>
-                  <span>•</span>
-                  <span className="text-indigo-300">From: {receiverTransfer.peerName}</span>
-                </div>
+                <p className="text-[9.5px] text-slate-450 mt-0.5 truncate leading-none">
+                  Size: {formatBytes(receiverTransfer.fileSize)} • From: {receiverTransfer.peerName}
+                </p>
               </div>
             </div>
 
-            {/* Accept / Decline selection buttons */}
             {receiverTransfer.status === "offered" && (
-              <div className="flex flex-col gap-2 pt-1 select-none">
+              <div className="flex flex-col gap-1.5 pt-0.5 select-none">
                 <button
                   onClick={acceptIncomingOffer}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold tracking-widest rounded-xl cursor-pointer transition-all uppercase shadow-lg shadow-indigo-600/20 flex items-center justify-center space-x-2"
+                  className="w-full py-2.5 bg-[#265c34] hover:bg-[#347442] text-white font-mono text-[10px] font-bold tracking-wider rounded-lg cursor-pointer transition-all uppercase flex items-center justify-center space-x-1.5"
                 >
-                  <Download size={13} />
-                  <span>AUTHORIZE BEAM</span>
+                  <Download size={12} />
+                  <span>Accept File</span>
                 </button>
                 <button
                   onClick={declineIncomingOffer}
-                  className="w-full py-3 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white font-mono text-xs font-semibold tracking-widest rounded-xl cursor-pointer border border-brand-border transition-all uppercase"
+                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-brand-border font-mono text-[10px] font-semibold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
                 >
                   Decline
                 </button>
               </div>
             )}
 
-            {/* Streaming reception bar */}
             {receiverTransfer.status === "transferring" && (
-              <div className="space-y-3 py-1">
-                <div className="flex justify-between items-center text-[10px] font-mono text-slate-350 select-none">
-                  <span>Assembling segments...</span>
+              <div className="space-y-2.5 py-0.5">
+                <div className="flex justify-between items-center text-[9px] font-mono text-slate-400 select-none">
+                  <span>Receiving...</span>
                   <span className="font-bold text-white">{receiverTransfer.percent}%</span>
                 </div>
-                <div className="w-full bg-slate-900 h-2 rounded-full overflow-hidden border border-brand-border shadow-inner">
+                <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-brand-border shadow-inner">
                   <div 
-                    className="bg-indigo-650 h-full rounded-full transition-all duration-100 glow-box" 
+                    className="bg-[#265c34] h-full rounded-full transition-all duration-100 glow-box" 
                     style={{ width: `${receiverTransfer.percent}%` }}
                   />
                 </div>
               </div>
             )}
 
-            {/* Completed Assembly State */}
             {receiverTransfer.status === "success" && (
-              <div className="flex flex-col items-center justify-center py-2 space-y-4 text-center select-none animate-in zoom-in-95 duration-200">
-                <div className="w-11 h-11 bg-emerald-500/15 text-emerald-400 border border-emerald-500/25 rounded-full flex items-center justify-center glow-box">
-                  <Check size={20} />
+              <div className="flex flex-col items-center justify-center py-2 space-y-3 text-center select-none">
+                <div className="w-9 h-9 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
+                  <Check size={16} />
                 </div>
                 <div>
-                  <h4 className="text-xs font-extrabold text-white">Payload Assembled!</h4>
-                  <p className="text-[9.5px] font-mono text-slate-450 mt-1 uppercase">The file was successfully constructed and saved to disk</p>
+                  <h4 className="text-xs font-bold text-white">Transfer Completed!</h4>
+                  <p className="text-[9px] font-mono text-slate-450 mt-1 uppercase">File downloaded to your local storage</p>
                 </div>
                 <button
                   onClick={() => setReceiverTransfer(null)}
-                  className="w-full py-3 bg-indigo-600 hover:bg-indigo-500 text-white font-mono text-xs font-bold tracking-wider rounded-xl cursor-pointer transition-all uppercase"
+                  className="w-full py-2.5 bg-[#265c34] hover:bg-[#347442] text-white font-mono text-[10px] font-bold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
                 >
                   Dismiss
                 </button>
