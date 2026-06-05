@@ -118,6 +118,10 @@ export default function App() {
     senderTransferRef.current = senderTransfer;
   }, [senderTransfer]);
 
+  const directPcRef = useRef<RTCPeerConnection | null>(null);
+  const directChannelRef = useRef<RTCDataChannel | null>(null);
+  const directConnectTimeoutRef = useRef<number | null>(null);
+
   // Direct Beam Receiver State
   const [receiverTransfer, setReceiverTransfer] = useState<{
     peerId: string;
@@ -270,7 +274,7 @@ export default function App() {
               if (payload.accepted) {
                 const currentSenderTransfer = senderTransferRef.current;
                 if (currentSenderTransfer && activeSenderFileRef.current) {
-                  beginChunkStreaming(currentSenderTransfer.peerId, activeSenderFileRef.current);
+                  setupDirectSenderWebRTC(currentSenderTransfer.peerId, activeSenderFileRef.current);
                 }
               } else {
                 setSenderTransfer(prev => prev ? { ...prev, status: "declined" } : null);
@@ -278,7 +282,32 @@ export default function App() {
               }
               break;
 
+            case "direct-offer":
+              setupDirectReceiverWebRTC(senderPeerId, payload);
+              break;
+
+            case "direct-answer":
+              if (directPcRef.current) {
+                try {
+                  await directPcRef.current.setRemoteDescription(new RTCSessionDescription(payload));
+                } catch (e) {
+                  console.error("Failed setting remote answer:", e);
+                }
+              }
+              break;
+
+            case "direct-ice-candidate":
+              if (directPcRef.current && payload) {
+                try {
+                  await directPcRef.current.addIceCandidate(new RTCIceCandidate(payload));
+                } catch (e) {
+                  console.error("Failed adding direct ICE candidate:", e);
+                }
+              }
+              break;
+
             case "relay-chunk":
+              cleanupDirectWebRTC();
               handleIncomingChunk(payload, senderPeerId);
               break;
 
@@ -289,6 +318,7 @@ export default function App() {
               break;
 
             case "transfer-canceled":
+              cleanupDirectWebRTC();
               setReceiverTransfer(null);
               incomingChunksRef.current = {};
               break;
@@ -318,6 +348,11 @@ export default function App() {
         wsRef.current.close();
         wsRef.current = null;
       }
+      if (directConnectTimeoutRef.current) {
+        clearTimeout(directConnectTimeoutRef.current);
+        directConnectTimeoutRef.current = null;
+      }
+      cleanupDirectWebRTC();
     };
   }, [profileName, view, tab]);
 
@@ -363,7 +398,227 @@ export default function App() {
     });
   };
 
-  const beginChunkStreaming = async (recipientId: string, file: File) => {
+  const cleanupDirectWebRTC = () => {
+    if (directChannelRef.current) {
+      try { directChannelRef.current.close(); } catch {}
+      directChannelRef.current = null;
+    }
+    if (directPcRef.current) {
+      try { directPcRef.current.close(); } catch {}
+      directPcRef.current = null;
+    }
+  };
+
+  const setupDirectSenderWebRTC = async (recipientId: string, file: File) => {
+    setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
+
+    let fallbackTriggered = false;
+
+    const runFallback = () => {
+      if (fallbackTriggered) return;
+      fallbackTriggered = true;
+      console.log("Direct P2P WebRTC failed, falling back to WebSocket relay...");
+      cleanupDirectWebRTC();
+      beginWebSocketChunkStreaming(recipientId, file);
+    };
+
+    const timeoutId = window.setTimeout(() => {
+      runFallback();
+    }, 3000);
+    directConnectTimeoutRef.current = timeoutId;
+
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+      directPcRef.current = pc;
+
+      const channel = pc.createDataChannel("direct-transfer-channel", { ordered: true });
+      channel.binaryType = "arraybuffer";
+      directChannelRef.current = channel;
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          sendSignal({
+            type: "direct-ice-candidate",
+            targetPeerId: recipientId,
+            payload: e.candidate
+          });
+        }
+      };
+
+      channel.onopen = () => {
+        if (directConnectTimeoutRef.current) {
+          clearTimeout(directConnectTimeoutRef.current);
+          directConnectTimeoutRef.current = null;
+        }
+        beginDirectBinaryStreaming(recipientId, file, channel);
+      };
+
+      channel.onclose = () => {
+        console.log("Direct transfer channel closed");
+      };
+
+      channel.onmessage = (e) => {
+        if (typeof e.data === "string") {
+          try {
+            const msg = JSON.parse(e.data);
+            if (msg.type === "complete") {
+              setSenderTransfer(prev => prev ? { ...prev, status: "success", percent: 100 } : null);
+              cleanupDirectWebRTC();
+            }
+          } catch {}
+        }
+      };
+
+      const offer = await pc.createOffer();
+      await pc.setLocalDescription(offer);
+      sendSignal({
+        type: "direct-offer",
+        targetPeerId: recipientId,
+        payload: offer
+      });
+    } catch (err) {
+      console.error("Direct Sender WebRTC Error:", err);
+      runFallback();
+    }
+  };
+
+  const beginDirectBinaryStreaming = async (recipientId: string, file: File, channel: RTCDataChannel) => {
+    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
+    const startTime = Date.now();
+    channel.bufferedAmountLowThreshold = 65536; // 64KB
+
+    // Send header details first
+    channel.send(JSON.stringify({
+      type: "header",
+      fileName: file.name,
+      fileSize: file.size,
+      totalChunks
+    }));
+
+    for (let index = 0; index < totalChunks; index++) {
+      if (!activeSenderFileRef.current || senderTransferRef.current?.status === "canceled" || channel.readyState !== "open") {
+        break;
+      }
+
+      // Backpressure throttle
+      if (channel.bufferedAmount > 1024 * 1024) { // 1MB limit
+        await new Promise<void>((resolve) => {
+          const onLow = () => {
+            channel.removeEventListener("bufferedamountlow", onLow);
+            resolve();
+          };
+          channel.addEventListener("bufferedamountlow", onLow);
+        });
+      }
+
+      const start = index * CHUNK_SIZE;
+      const end = Math.min(start + CHUNK_SIZE, file.size);
+      const fileSlice = file.slice(start, end);
+      const buffer = await fileSlice.arrayBuffer();
+
+      channel.send(buffer);
+
+      const percent = Math.round(((index + 1) / totalChunks) * 100);
+      const elapsed = (Date.now() - startTime) / 1000;
+      const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
+
+      setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
+    }
+
+    // Send end indicator
+    if (channel.readyState === "open" && senderTransferRef.current?.status !== "canceled") {
+      channel.send(JSON.stringify({ type: "end" }));
+    }
+  };
+
+  const setupDirectReceiverWebRTC = async (senderId: string, offer: any) => {
+    setReceiverTransfer(prev => prev ? { ...prev, status: "transferring", percent: 0 } : null);
+
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
+      });
+      directPcRef.current = pc;
+
+      pc.onicecandidate = (e) => {
+        if (e.candidate) {
+          sendSignal({
+            type: "direct-ice-candidate",
+            targetPeerId: senderId,
+            payload: e.candidate
+          });
+        }
+      };
+
+      pc.ondatachannel = (event) => {
+        const channel = event.channel;
+        channel.binaryType = "arraybuffer";
+        directChannelRef.current = channel;
+
+        let fileMeta: { name: string; size: number; totalChunks: number; chunksReceived: number } | null = null;
+        let chunksList: ArrayBuffer[] = [];
+
+        channel.onmessage = async (e) => {
+          if (typeof e.data === "string") {
+            try {
+              const msg = JSON.parse(e.data);
+              if (msg.type === "header") {
+                fileMeta = {
+                  name: msg.fileName,
+                  size: msg.fileSize,
+                  totalChunks: msg.totalChunks,
+                  chunksReceived: 0
+                };
+                chunksList = [];
+              } else if (msg.type === "end") {
+                if (fileMeta && chunksList.length > 0) {
+                  const compiledBlob = new Blob(chunksList);
+                  const blobUrl = URL.createObjectURL(compiledBlob);
+
+                  const anchor = document.createElement("a");
+                  anchor.href = blobUrl;
+                  anchor.download = fileMeta.name;
+                  document.body.appendChild(anchor);
+                  anchor.click();
+                  document.body.removeChild(anchor);
+
+                  channel.send(JSON.stringify({ type: "complete" }));
+
+                  setReceiverTransfer(prev => prev ? { ...prev, status: "success", percent: 100 } : null);
+                  cleanupDirectWebRTC();
+                }
+              }
+            } catch (err) {
+              console.error("Direct receiver parsing crash:", err);
+            }
+          } else {
+            // Binary chunk
+            if (fileMeta) {
+              chunksList.push(e.data);
+              fileMeta.chunksReceived++;
+              const pct = Math.round((fileMeta.chunksReceived / fileMeta.totalChunks) * 100);
+              setReceiverTransfer(prev => prev ? { ...prev, percent: pct, chunksReceived: fileMeta!.chunksReceived } : null);
+            }
+          }
+        };
+      };
+
+      await pc.setRemoteDescription(new RTCSessionDescription(offer));
+      const answer = await pc.createAnswer();
+      await pc.setLocalDescription(answer);
+      sendSignal({
+        type: "direct-answer",
+        targetPeerId: senderId,
+        payload: pc.localDescription
+      });
+    } catch (err) {
+      console.error("Direct receiver setup error:", err);
+    }
+  };
+
+  const beginWebSocketChunkStreaming = async (recipientId: string, file: File) => {
     if (!senderTransferRef.current) return;
 
     setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
@@ -436,6 +691,11 @@ export default function App() {
   };
 
   const cancelSenderFlow = () => {
+    if (directConnectTimeoutRef.current) {
+      clearTimeout(directConnectTimeoutRef.current);
+      directConnectTimeoutRef.current = null;
+    }
+    cleanupDirectWebRTC();
     const currentSenderTransfer = senderTransferRef.current;
     if (currentSenderTransfer) {
       sendSignal({
@@ -448,6 +708,7 @@ export default function App() {
   };
 
   const declineIncomingOffer = () => {
+    cleanupDirectWebRTC();
     if (receiverTransfer) {
       sendSignal({
         type: "file-offer-response",
