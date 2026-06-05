@@ -41,7 +41,7 @@ sequenceDiagram
     Note over Sender,Receiver: 1. Locker Creation
     Sender->>Server: HTTP POST /api/rooms (files metadata, password hash)
     Server-->>Sender: 201 Created (RoomID, Expiry)
-    Note over Sender: Generates AES-255 key, creates hash link
+    Note over Sender: Generates AES-256 key, creates hash link
     
     Note over Sender,Receiver: 2. Receiver Joins Room
     Receiver->>Server: HTTP GET /api/rooms/RoomID (Verify locker exists)
