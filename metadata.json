@@ -1,5 +1,5 @@
 {
-  "name": "SendFile",
+  "name": "SendFiles",
   "description": "An instant zero-configuration peer-to-peer file sharing application with automatic device discovery.",
   "requestFramePermissions": [],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]

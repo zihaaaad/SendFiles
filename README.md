@@ -1,6 +1,6 @@
-# 🚀 SendFile P2P: Secure Zero-Configuration Sharing
+# 🚀 SendFiles P2P: Secure Zero-Configuration Sharing
 
-SendFile P2P is a state-of-the-art, zero-configuration peer-to-peer file sharing application. It enables instant device discovery on local networks and secure, direct-channel file transfers via WebRTC. For restrictive NAT networks, it automatically rolls back to an asynchronous WebSocket chunk relay.
+SendFiles P2P is a state-of-the-art, zero-configuration peer-to-peer file sharing application. It enables instant device discovery on local networks and secure, direct-channel file transfers via WebRTC. For restrictive NAT networks, it automatically rolls back to an asynchronous WebSocket chunk relay.
 
 The frontend is styled in a glassmorphic dark-theme using React 19, Tailwind CSS v4, and Motion. The backend is an Express Node server that acts as a WebSocket signaling gateway and provides a public IP discovery mechanism.
 

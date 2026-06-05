@@ -684,7 +684,7 @@ export default function App() {
               <Network size={18} className="animate-pulse" />
             </div>
             <div>
-              <span className="text-sm font-extrabold tracking-wider text-white uppercase block">SendFile P2P</span>
+              <span className="text-sm font-extrabold tracking-wider text-white uppercase block">SendFiles P2P</span>
               <span className="text-[9px] font-mono text-indigo-400 tracking-widest uppercase block -mt-1 font-bold">End-to-End Cryptographic Portal</span>
             </div>
           </div>

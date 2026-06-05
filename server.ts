@@ -458,7 +458,7 @@ async function startApp() {
 
   server.listen(PORT, "0.0.0.0", () => {
     console.log(`Server starting on port ${PORT}`);
-    console.log(`P2P Direct SendFile platform ready & listening.`);
+    console.log(`P2P Direct SendFiles platform ready & listening.`);
   });
 }
 
