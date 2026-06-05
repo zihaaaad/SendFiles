@@ -10,6 +10,8 @@ import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
+import os from "os";
+import { exec } from "child_process";
 
 dotenv.config();
 
@@ -30,6 +32,23 @@ app.get("/api/ip", (req, res) => {
     ? forwarded.split(",")[0].trim()
     : req.socket.remoteAddress || "127.0.0.1";
   res.json({ ip: publicIp });
+});
+
+// Fetch local network IPs of the server
+app.get("/api/network-ips", (req, res) => {
+  const ips: string[] = [];
+  const interfaces = os.networkInterfaces();
+  for (const devName in interfaces) {
+    const iface = interfaces[devName];
+    if (iface) {
+      for (const alias of iface) {
+        if (alias.family === "IPv4" && !alias.internal) {
+          ips.push(alias.address);
+        }
+      }
+    }
+  }
+  res.json({ ips });
 });
 
 // File Metadata interfaces
@@ -481,8 +500,36 @@ async function startApp() {
   }
 
   server.listen(PORT, "0.0.0.0", () => {
-    console.log(`Server starting on port ${PORT}`);
+    const localUrl = `http://localhost:${PORT}`;
+    console.log(`\n==================================================`);
     console.log(`P2P Direct SendFiles platform ready & listening.`);
+    console.log(`Local Access URL:   \x1b[36m${localUrl}\x1b[0m`);
+    
+    // Log local network IPs
+    const interfaces = os.networkInterfaces();
+    for (const devName in interfaces) {
+      const iface = interfaces[devName];
+      if (iface) {
+        for (const alias of iface) {
+          if (alias.family === "IPv4" && !alias.internal) {
+            console.log(`Network Access URL: \x1b[36mhttp://${alias.address}:${PORT}\x1b[0m`);
+          }
+        }
+      }
+    }
+    console.log(`==================================================\n`);
+
+    // Auto-open browser in dev mode
+    if (process.env.NODE_ENV !== "production") {
+      const startCommand = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
+      exec(`${startCommand} ${localUrl}`, (err) => {
+        if (err) {
+          console.log(`Could not automatically open browser: ${err.message}`);
+        } else {
+          console.log(`Opened browser to ${localUrl}`);
+        }
+      });
+    }
   });
 }
 

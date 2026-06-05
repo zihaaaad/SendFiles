@@ -99,8 +99,24 @@ export default function App() {
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
   const [myPublicIp, setMyPublicIp] = useState<string>("Detecting public IP...");
   const [socketStatus, setSocketStatus] = useState<"connecting" | "online" | "offline">("connecting");
-  const [copiedLink, setCopiedLink] = useState(false);
   const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
+  const [copiedLink, setCopiedLink] = useState(false);
+  const [networkIps, setNetworkIps] = useState<string[]>([]);
+
+  useEffect(() => {
+    const fetchNetworkIps = async () => {
+      try {
+        const res = await fetch("/api/network-ips");
+        if (res.ok) {
+          const data = await res.json();
+          setNetworkIps(data.ips || []);
+        }
+      } catch (err) {
+        console.error("Failed to fetch server IPs:", err);
+      }
+    };
+    fetchNetworkIps();
+  }, []);
 
   // Direct Beam Sender State
   const [senderTransfer, setSenderTransfer] = useState<{
@@ -917,6 +933,10 @@ export default function App() {
   const localPeers = peers.filter(p => p.ip === myPublicIp);
   const globalPeers = peers.filter(p => p.ip !== myPublicIp);
 
+  const qrUrl = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
+    ? window.location.origin
+    : (networkIps.length > 0 ? `${window.location.protocol}//${networkIps[0]}:${window.location.port}` : window.location.origin);
+
   // ----------------------------------------------------
   // Main Layout Render
   // ----------------------------------------------------
@@ -996,6 +1016,27 @@ export default function App() {
               >
                 <RefreshCw size={11} className="animate-spin-slow" /> Change
               </button>
+            </div>
+
+            {/* Local Network QR Code Link */}
+            <div className="glass-panel rounded-xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-md">
+              <div className="bg-white p-1 rounded-lg shrink-0">
+                <img 
+                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrUrl)}`} 
+                  alt="Network QR Code" 
+                  className="w-20 h-20 block"
+                />
+              </div>
+              <div className="space-y-1.5 text-center sm:text-left min-w-0 select-none">
+                <span className="text-[8.5px] font-mono text-[#7bd18f] uppercase tracking-widest font-bold block">Local Network Portal</span>
+                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Connect Mobile Devices</h3>
+                <p className="text-[10.5px] text-slate-455 leading-relaxed font-medium">
+                  Scan this code with your phone to open SendFiles and pair instantly.
+                </p>
+                <div className="text-[9.5px] font-mono text-slate-400 bg-slate-950/30 px-2 py-0.5 rounded border border-brand-border inline-block max-w-full truncate font-bold">
+                  {qrUrl}
+                </div>
+              </div>
             </div>
 
             {/* Simple Mobile Tab Navigation */}
