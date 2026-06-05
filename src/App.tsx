@@ -513,6 +513,8 @@ export default function App() {
       totalChunks
     }));
 
+    let lastUpdate = 0;
+
     for (let index = 0; index < totalChunks; index++) {
       if (!activeSenderFileRef.current || senderTransferRef.current?.status === "canceled" || channel.readyState !== "open") {
         break;
@@ -537,10 +539,13 @@ export default function App() {
       channel.send(buffer);
 
       const percent = Math.round(((index + 1) / totalChunks) * 100);
-      const elapsed = (Date.now() - startTime) / 1000;
-      const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
-
-      setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
+      const now = Date.now();
+      if (now - lastUpdate > 150 || percent === 100) {
+        lastUpdate = now;
+        const elapsed = (now - startTime) / 1000;
+        const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
+        setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
+      }
     }
 
     // Send end indicator
@@ -575,6 +580,7 @@ export default function App() {
 
         let fileMeta: { name: string; size: number; totalChunks: number; chunksReceived: number } | null = null;
         let chunksList: ArrayBuffer[] = [];
+        let lastUpdate = 0;
 
         channel.onmessage = async (e) => {
           if (typeof e.data === "string") {
@@ -588,6 +594,7 @@ export default function App() {
                   chunksReceived: 0
                 };
                 chunksList = [];
+                lastUpdate = 0;
               } else if (msg.type === "end") {
                 if (fileMeta && chunksList.length > 0) {
                   const compiledBlob = new Blob(chunksList);
@@ -615,7 +622,11 @@ export default function App() {
               chunksList.push(e.data);
               fileMeta.chunksReceived++;
               const pct = Math.round((fileMeta.chunksReceived / fileMeta.totalChunks) * 100);
-              setReceiverTransfer(prev => prev ? { ...prev, percent: pct, chunksReceived: fileMeta!.chunksReceived } : null);
+              const now = Date.now();
+              if (now - lastUpdate > 150 || pct === 100) {
+                lastUpdate = now;
+                setReceiverTransfer(prev => prev ? { ...prev, percent: pct, chunksReceived: fileMeta!.chunksReceived } : null);
+              }
             }
           }
         };
@@ -640,6 +651,7 @@ export default function App() {
     setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
     const startTime = Date.now();
+    let lastUpdate = 0;
 
     for (let index = 0; index < totalChunks; index++) {
       if (!activeSenderFileRef.current || senderTransferRef.current?.status === "canceled") {
@@ -671,10 +683,13 @@ export default function App() {
       });
 
       const percent = Math.round(((index + 1) / totalChunks) * 100);
-      const elapsed = (Date.now() - startTime) / 1000;
-      const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
-
-      setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
+      const now = Date.now();
+      if (now - lastUpdate > 150 || percent === 100) {
+        lastUpdate = now;
+        const elapsed = (now - startTime) / 1000;
+        const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
+        setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
+      }
 
       // Throttle based on WebSocket buffer amount to prevent memory bloating
       if (wsRef.current && wsRef.current.bufferedAmount > 1024 * 1024) { // 1MB

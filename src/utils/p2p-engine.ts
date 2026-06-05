@@ -25,6 +25,7 @@ export class P2PSender {
     startTime: number;
     isTransferring: boolean;
   }>(); // peerId -> active transfer stats
+  private lastProgressUpdates = new Map<string, number>(); // peerId -> last progress update timestamp
 
   public onPeerStatusChange: (peerId: string, status: string) => void = () => {};
   public onProgressUpdate: (peerId: string, progress: TransferProgress) => void = () => {};
@@ -211,19 +212,25 @@ export class P2PSender {
       // Real-time progressive ack from receiver
       const file = this.files[fileIndex];
       const bytesAcked = Math.min(file.size, (chunkIndex + 1) * CHUNK_SIZE);
-      
-      const { speed, eta } = calculateSpeedAndETA(bytesAcked, file.size, transfer.startTime);
+      const percent = Math.round((bytesAcked / file.size) * 100);
+      const now = Date.now();
+      const lastUpdate = this.lastProgressUpdates.get(rxPeerId) || 0;
 
-      this.onProgressUpdate(rxPeerId, {
-        fileIndex,
-        fileName: file.name,
-        fileSize: file.size,
-        bytesSentOrReceived: bytesAcked,
-        percent: Math.round((bytesAcked / file.size) * 100),
-        speed,
-        eta,
-        status: "transferring",
-      });
+      if (now - lastUpdate > 150 || percent === 100) {
+        this.lastProgressUpdates.set(rxPeerId, now);
+        const { speed, eta } = calculateSpeedAndETA(bytesAcked, file.size, transfer.startTime);
+
+        this.onProgressUpdate(rxPeerId, {
+          fileIndex,
+          fileName: file.name,
+          fileSize: file.size,
+          bytesSentOrReceived: bytesAcked,
+          percent,
+          speed,
+          eta,
+          status: "transferring",
+        });
+      }
     }
     else if (type === "download-complete") {
       // Receiver fully completed and compiled this file
@@ -308,6 +315,7 @@ export class P2PReceiver {
   private channel: RTCDataChannel | null = null;
   private startTime = 0;
   private bytesCompleted = 0;
+  private lastProgressUpdate = 0;
 
   // Track currently processing file metadata
   private currentFile: {
@@ -554,18 +562,23 @@ export class P2PReceiver {
       }
 
       // Progress maths
-      const { speed, eta } = calculateSpeedAndETA(this.bytesCompleted, this.currentFile.size, this.startTime);
+      const percent = Math.round((this.currentFile.receivedChunks / this.currentFile.totalChunks) * 100);
+      const now = Date.now();
+      if (now - this.lastProgressUpdate > 150 || percent === 100) {
+        this.lastProgressUpdate = now;
+        const { speed, eta } = calculateSpeedAndETA(this.bytesCompleted, this.currentFile.size, this.startTime);
 
-      this.onProgress({
-        fileIndex: this.currentFile.index,
-        fileName: this.currentFile.name,
-        fileSize: this.currentFile.size,
-        bytesSentOrReceived: this.bytesCompleted,
-        percent: Math.round((this.currentFile.receivedChunks / this.currentFile.totalChunks) * 100),
-        speed,
-        eta,
-        status: "transferring",
-      });
+        this.onProgress({
+          fileIndex: this.currentFile.index,
+          fileName: this.currentFile.name,
+          fileSize: this.currentFile.size,
+          bytesSentOrReceived: this.bytesCompleted,
+          percent,
+          speed,
+          eta,
+          status: "transferring",
+        });
+      }
 
     } catch (err: any) {
       this.onLogMessage(`Payload decryption crashed (key mismatch?): ${err.message}`);
