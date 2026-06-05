@@ -72,9 +72,20 @@ To run the application locally, follow these steps:
 ### Prerequisites
 - Node.js (Version 18 or higher recommended)
 
-### Installation
-1. Clone the repository files and enter the project directory.
-2. Install the node dependencies:
+### Installation & Launching
+
+#### Option A: One-Click Launchers (Simplified)
+For a simplified setup that checks for Node.js, installs any missing dependencies, and launches the development server automatically:
+- **Windows**: Double-click the `run-windows.bat` launcher in the project root.
+- **Linux / macOS**: Run the launcher from your terminal:
+  ```bash
+  chmod +x run-linux.sh
+  ./run-linux.sh
+  ```
+
+#### Option B: Manual Commands
+1. Clone the repository and navigate into the project directory.
+2. Install the Node dependencies:
    ```bash
    npm install
    ```
@@ -82,9 +93,9 @@ To run the application locally, follow these steps:
    ```bash
    npm run dev
    ```
-   This compiles the frontend assets and spins up the Express server concurrently on port `3000`.
-4. Access the portal:
-   Open [http://localhost:3000](http://localhost:3000) in your web browser.
+   This compiles the frontend assets and starts the Express signaling server on port 3000.
+4. Access the application:
+   Open http://localhost:3000 in your browser.
 
 ### Testing Across Local Wi-Fi Devices
 To test file sharing between two local devices:

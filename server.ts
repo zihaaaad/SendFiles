@@ -6,7 +6,6 @@
 import express from "express";
 import http from "http";
 import path from "path";
-import { fileURLToPath } from "url";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
@@ -14,9 +13,6 @@ import os from "os";
 import { exec } from "child_process";
 
 dotenv.config();
-
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
 
 const app = express();
 const server = http.createServer(app);

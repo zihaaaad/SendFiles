@@ -4,8 +4,6 @@
  */
 
 import { FileMeta, TransferProgress, TransferState } from "../types";
-import { encryptChunk, decryptChunk } from "./crypto";
-import { saveChunkToDB, compileFilesFromDB } from "./db";
 
 const CHUNK_SIZE = 32768; // 32KB chunking specification size
 export const ICE_CONFIG: RTCConfiguration = {
