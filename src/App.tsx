@@ -405,14 +405,24 @@ export default function App() {
 
       setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
 
+      // Throttle based on WebSocket buffer amount to prevent memory bloating
+      if (wsRef.current && wsRef.current.bufferedAmount > 1024 * 1024) { // 1MB
+        await new Promise<void>((resolve) => {
+          const checkBuffer = setInterval(() => {
+            if (!activeSenderFileRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || wsRef.current.bufferedAmount < 256 * 1024) {
+              clearInterval(checkBuffer);
+              resolve();
+            }
+          }, 10);
+        });
+      }
+    }
+
+    // Wait for the final chunk to be acknowledged by the receiver before marking success
+    if (activeSenderFileRef.current && senderTransferRef.current?.status !== "canceled") {
       await new Promise<void>((resolve) => {
         senderAckPromiseResolver.current = resolve;
-        setTimeout(() => {
-          if (senderAckPromiseResolver.current === resolve) {
-            senderAckPromiseResolver.current = null;
-            resolve();
-          }
-        }, 80);
+        setTimeout(resolve, 3000); // 3 seconds timeout fallback
       });
     }
 
