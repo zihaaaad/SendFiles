@@ -9,7 +9,6 @@ import https from "https";
 import fs from "fs";
 import path from "path";
 import { WebSocketServer, WebSocket } from "ws";
-import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import os from "os";
 import { exec } from "child_process";
@@ -558,14 +557,14 @@ setInterval(() => {
 // Vite Middleware for Asset Serving / Compilation
 async function startApp() {
   if (process.env.NODE_ENV !== "production") {
+    const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
     app.use(vite.middlewares);
   } else {
-    const isPackaged = typeof (process as any).pkg !== "undefined";
-    const distPath = isPackaged ? __dirname : path.join(process.cwd(), "dist");
+    const distPath = __dirname;
     app.use(express.static(distPath));
     app.get("*", (req, res) => {
       res.sendFile(path.join(distPath, "index.html"));
