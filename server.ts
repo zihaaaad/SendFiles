@@ -16,6 +16,10 @@ import selfsigned from "selfsigned";
 
 dotenv.config();
 
+const isPackaged = typeof (process as any).pkg !== "undefined";
+const isDev = process.env.NODE_ENV === "development" || (process.env.NODE_ENV !== "production" && !isPackaged && !__filename.endsWith("server.cjs"));
+const isLocalDesktop = isPackaged || process.platform === "win32" || process.platform === "darwin" || (process.platform === "linux" && !!process.env.DISPLAY);
+
 function isLocalIp(ip: string): boolean {
   if (!ip) return false;
   let cleanIp = ip;
@@ -556,7 +560,7 @@ setInterval(() => {
 
 // Vite Middleware for Asset Serving / Compilation
 async function startApp() {
-  if (process.env.NODE_ENV !== "production") {
+  if (isDev) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
       server: { middlewareMode: true },
@@ -600,8 +604,8 @@ async function startApp() {
     }
     console.log(`==================================================\n`);
 
-    // Auto-open browser in dev mode
-    if (process.env.NODE_ENV !== "production") {
+    // Auto-open browser for local desktop runs
+    if (isLocalDesktop && process.env.NO_OPEN !== "true") {
       const startCommand = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
       exec(`${startCommand} ${localUrlHttp}`, (err) => {
         if (err) {
