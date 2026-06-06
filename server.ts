@@ -58,7 +58,7 @@ const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || "3001", 10);
 // Generate or load self-signed SSL certificate
 let sslCert: any = null;
 try {
-  const sslDir = path.join(os.tmpdir(), "sendfiles-ssl");
+  const sslDir = path.join(os.tmpdir(), "sendfiles-ssl-v2");
   if (!fs.existsSync(sslDir)) {
     fs.mkdirSync(sslDir, { recursive: true });
   }
@@ -71,7 +71,7 @@ try {
     };
   } else {
     const attrs = [{ name: "commonName", value: "SendFiles" }];
-    const pems = selfsigned.generate(attrs, { days: 365 });
+    const pems = selfsigned.generate(attrs, { days: 365, keySize: 2048 });
     fs.writeFileSync(keyPath, pems.private);
     fs.writeFileSync(certPath, pems.cert);
     sslCert = {
@@ -82,7 +82,7 @@ try {
 } catch (err) {
   console.error("Failed to generate/load SSL certificate, using in-memory fallback:", err);
   const attrs = [{ name: "commonName", value: "SendFiles" }];
-  const pems = selfsigned.generate(attrs, { days: 365 });
+  const pems = selfsigned.generate(attrs, { days: 365, keySize: 2048 });
   sslCert = {
     key: pems.private,
     cert: pems.cert
