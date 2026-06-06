@@ -29,6 +29,7 @@ export interface TransferProgress {
   speed: number; // in Bytes per second
   eta: number; // in seconds
   status: TransferState;
+  connectionType?: "Direct" | "Relayed";
 }
 
 export interface SignalingMessage {

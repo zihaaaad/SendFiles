@@ -71,6 +71,13 @@ interface CreatedLocker {
 }
 
 export default function App() {
+  // Check if current context is insecure (WebRTC/Crypto block)
+  const isInsecureContext = 
+    window.location.protocol === "http:" && 
+    window.location.hostname !== "localhost" && 
+    window.location.hostname !== "127.0.0.1" &&
+    window.location.hostname !== "::1";
+
   // 1. Identity Profiling (Forest-Themed)
   const [profileName, setProfileName] = useState<string>(() => {
     let user = localStorage.getItem("filedrop_operator_user");
@@ -993,6 +1000,16 @@ export default function App() {
   return (
     <div className="min-h-screen bg-brand-bg text-slate-800 flex flex-col font-sans antialiased relative overflow-x-hidden pb-10">
       
+      {/* Insecure Context Warning Banner */}
+      {isInsecureContext && (
+        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 text-[11.5px] font-mono px-4 py-2.5 flex items-center justify-between relative z-50">
+          <div className="flex items-center max-w-4xl mx-auto space-x-2">
+            <span className="font-bold flex-shrink-0">⚠️ SECURE CONTEXT REQUIRED:</span>
+            <span>WebRTC and Cryptography APIs are blocked on insecure HTTP local IPs. Please reload using the secure HTTPS link: <a href={`https://${window.location.hostname}:${parseInt(window.location.port) + 1 || 3001}${window.location.hash}`} className="underline font-bold text-rose-900 hover:text-rose-950">https://{window.location.hostname}:3001</a></span>
+          </div>
+        </div>
+      )}
+
       {/* Background ambient lighting */}
       <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-[#265c34]/3 rounded-full blur-[140px] pointer-events-none" />
       <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#265c34]/3 rounded-full blur-[120px] pointer-events-none" />

@@ -5,12 +5,15 @@
 
 import express from "express";
 import http from "http";
+import https from "https";
+import fs from "fs";
 import path from "path";
 import { WebSocketServer, WebSocket } from "ws";
 import { createServer as createViteServer } from "vite";
 import dotenv from "dotenv";
 import os from "os";
 import { exec } from "child_process";
+import selfsigned from "selfsigned";
 
 dotenv.config();
 
@@ -48,8 +51,46 @@ function ipsMatchForDiscovery(ipA: string, ipB: string): boolean {
 }
 
 const app = express();
+
+const PORT = parseInt(process.env.PORT || "3000", 10);
+const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || "3001", 10);
+
+// Generate or load self-signed SSL certificate
+let sslCert: any = null;
+try {
+  const sslDir = path.join(os.tmpdir(), "sendfiles-ssl");
+  if (!fs.existsSync(sslDir)) {
+    fs.mkdirSync(sslDir, { recursive: true });
+  }
+  const keyPath = path.join(sslDir, "key.pem");
+  const certPath = path.join(sslDir, "cert.pem");
+  if (fs.existsSync(keyPath) && fs.existsSync(certPath)) {
+    sslCert = {
+      key: fs.readFileSync(keyPath),
+      cert: fs.readFileSync(certPath)
+    };
+  } else {
+    const attrs = [{ name: "commonName", value: "SendFiles" }];
+    const pems = selfsigned.generate(attrs, { days: 365 });
+    fs.writeFileSync(keyPath, pems.private);
+    fs.writeFileSync(certPath, pems.cert);
+    sslCert = {
+      key: pems.private,
+      cert: pems.cert
+    };
+  }
+} catch (err) {
+  console.error("Failed to generate/load SSL certificate, using in-memory fallback:", err);
+  const attrs = [{ name: "commonName", value: "SendFiles" }];
+  const pems = selfsigned.generate(attrs, { days: 365 });
+  sslCert = {
+    key: pems.private,
+    cert: pems.cert
+  };
+}
+
 const server = http.createServer(app);
-const PORT = 3000;
+const httpsServer = https.createServer(sslCert, app);
 
 app.use(express.json());
 
@@ -467,9 +508,8 @@ wss.on("connection", (ws: WebSocket, request) => {
 });
 
 // Upgrade handling for WebSockets
-server.on("upgrade", (request, socket, head) => {
+const handleUpgrade = (request: any, socket: any, head: any) => {
   const pathname = new URL(request.url || "", `http://${request.headers.host}`).pathname;
-
   if (pathname === "/signaling") {
     wss.handleUpgrade(request, socket, head, (ws) => {
       wss.emit("connection", ws, request);
@@ -477,7 +517,10 @@ server.on("upgrade", (request, socket, head) => {
   } else {
     socket.destroy();
   }
-});
+};
+
+server.on("upgrade", handleUpgrade);
+httpsServer.on("upgrade", handleUpgrade);
 
 // Clean stale inactive connections and expired rooms
 setInterval(() => {
@@ -529,11 +572,19 @@ async function startApp() {
     });
   }
 
+  // Start HTTP Server
   server.listen(PORT, "0.0.0.0", () => {
-    const localUrl = `http://localhost:${PORT}`;
+    // Shared logging is handled in the HTTPS server startup block
+  });
+
+  // Start HTTPS Server
+  httpsServer.listen(HTTPS_PORT, "0.0.0.0", () => {
+    const localUrlHttp = `http://localhost:${PORT}`;
+    const localUrlHttps = `https://localhost:${HTTPS_PORT}`;
     console.log(`\n==================================================`);
     console.log(`P2P Direct SendFiles platform ready & listening.`);
-    console.log(`Local Access URL:   \x1b[36m${localUrl}\x1b[0m`);
+    console.log(`HTTP Local Access URL:  \x1b[36m${localUrlHttp}\x1b[0m`);
+    console.log(`HTTPS Local Access URL: \x1b[36m${localUrlHttps}\x1b[0m (Recommended for LAN sharing)`);
     
     // Log local network IPs
     const interfaces = os.networkInterfaces();
@@ -542,7 +593,8 @@ async function startApp() {
       if (iface) {
         for (const alias of iface) {
           if (alias.family === "IPv4" && !alias.internal) {
-            console.log(`Network Access URL: \x1b[36mhttp://${alias.address}:${PORT}\x1b[0m`);
+            console.log(`Network Access HTTP:  \x1b[36mhttp://${alias.address}:${PORT}\x1b[0m`);
+            console.log(`Network Access HTTPS: \x1b[36mhttps://${alias.address}:${HTTPS_PORT}\x1b[0m (For mobile/secure context)`);
           }
         }
       }
@@ -552,11 +604,11 @@ async function startApp() {
     // Auto-open browser in dev mode
     if (process.env.NODE_ENV !== "production") {
       const startCommand = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
-      exec(`${startCommand} ${localUrl}`, (err) => {
+      exec(`${startCommand} ${localUrlHttp}`, (err) => {
         if (err) {
           console.log(`Could not automatically open browser: ${err.message}`);
         } else {
-          console.log(`Opened browser to ${localUrl}`);
+          console.log(`Opened browser to ${localUrlHttp}`);
         }
       });
     }

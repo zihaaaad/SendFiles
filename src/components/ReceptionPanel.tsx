@@ -297,6 +297,13 @@ export default function ReceptionPanel({
 
                     <div className="flex justify-between items-center text-[8.5px] font-mono text-slate-500">
                       <span>{formatBytes(progress.bytesSentOrReceived)} received</span>
+                      {progress.connectionType && (
+                        <span className={`px-1 rounded text-[7px] font-bold uppercase ${
+                          progress.connectionType === "Direct" ? "bg-emerald-100 text-emerald-800 border border-emerald-250" : "bg-purple-100 text-purple-800 border border-purple-250"
+                        }`}>
+                          {progress.connectionType}
+                        </span>
+                      )}
                       <span>ETA: {formatTime(progress.eta)}</span>
                     </div>
                   </div>

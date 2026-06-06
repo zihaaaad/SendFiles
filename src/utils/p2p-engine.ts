@@ -10,6 +10,27 @@ import { calculateSpeedAndETA, getWebSocketURL, ICE_CONFIG } from "./webrtc-help
 
 const CHUNK_SIZE = 32768; // 32KB chunk specs
 
+// Helpers to serialize binary array buffers over WebSockets using Base64 encoding
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  let binary = "";
+  const bytes = new Uint8Array(buffer);
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return window.btoa(binary);
+}
+
+function base64ToArrayBuffer(base64: string): ArrayBuffer {
+  const binaryString = window.atob(base64);
+  const len = binaryString.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = binaryString.charCodeAt(i);
+  }
+  return bytes.buffer;
+}
+
 export class P2PSender {
   private roomId: string;
   private peerId: string;
@@ -24,6 +45,8 @@ export class P2PSender {
     bytesSent: number;
     startTime: number;
     isTransferring: boolean;
+    isRelaying: boolean;
+    isWaitingForAck: boolean;
   }>(); // peerId -> active transfer stats
   private lastProgressUpdates = new Map<string, number>(); // peerId -> last progress update timestamp
 
@@ -78,6 +101,11 @@ export class P2PSender {
               }
             }
             break;
+          case "relay-msg":
+            if (senderPeerId && payload) {
+              this.handleRelayMessage(senderPeerId, payload);
+            }
+            break;
         }
       } catch (err) {
         console.error("Sender signaling parse error:", err);
@@ -104,6 +132,8 @@ export class P2PSender {
     channel.binaryType = "arraybuffer";
     this.channels.set(rxPeerId, channel);
 
+    let connected = false;
+
     pc.onicecandidate = (e) => {
       if (e.candidate && this.ws && this.ws.readyState === WebSocket.OPEN) {
         this.ws.send(JSON.stringify({
@@ -117,11 +147,25 @@ export class P2PSender {
     pc.onconnectionstatechange = () => {
       this.onPeerStatusChange(rxPeerId, pc.connectionState);
       this.onLogMessage(`P2P Connection State with [${rxPeerId}]: ${pc.connectionState}`);
+      if (pc.connectionState === "connected") {
+        connected = true;
+      } else if (pc.connectionState === "failed") {
+        this.onLogMessage(`WebRTC connection failed with [${rxPeerId}]. Falling back to WebSocket relay...`);
+        this.initiateRelayFallback(rxPeerId);
+      }
     };
 
+    // Timeout: if connection doesn't succeed within 8 seconds, initiate relay fallback
+    setTimeout(() => {
+      if (!connected && this.peers.get(rxPeerId) === pc && pc.connectionState !== "connected") {
+        this.onLogMessage(`WebRTC connection negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
+        this.initiateRelayFallback(rxPeerId);
+      }
+    }, 8000);
+
     channel.onopen = () => {
+      connected = true;
       this.onLogMessage(`Secure binary datachannel open with [${rxPeerId}]. Starting streams.`);
-      // Start transfer queue for this specific peer
       this.startFileTransferQueue(rxPeerId);
     };
 
@@ -153,13 +197,42 @@ export class P2PSender {
       });
   }
 
+  private initiateRelayFallback(rxPeerId: string) {
+    const transfer = this.activeTransfers.get(rxPeerId);
+    if (transfer && transfer.isRelaying) return;
+
+    this.onLogMessage(`[Relay Fallback] Setting up WebSocket chunk relay for [${rxPeerId}]...`);
+
+    const pc = this.peers.get(rxPeerId);
+    const ch = this.channels.get(rxPeerId);
+    ch?.close();
+    pc?.close();
+
+    this.activeTransfers.set(rxPeerId, {
+      fileIndex: transfer?.fileIndex || 0,
+      chunkIndex: 0,
+      bytesSent: 0,
+      startTime: Date.now(),
+      isTransferring: false,
+      isRelaying: true,
+      isWaitingForAck: false,
+    });
+
+    this.sendNextFileHeader(rxPeerId);
+  }
+
   private async startFileTransferQueue(rxPeerId: string) {
+    const transfer = this.activeTransfers.get(rxPeerId);
+    const isRelaying = transfer?.isRelaying || false;
+
     this.activeTransfers.set(rxPeerId, {
       fileIndex: 0,
       chunkIndex: 0,
       bytesSent: 0,
       startTime: Date.now(),
       isTransferring: false,
+      isRelaying,
+      isWaitingForAck: false,
     });
 
     this.sendNextFileHeader(rxPeerId);
@@ -167,28 +240,50 @@ export class P2PSender {
 
   private sendNextFileHeader(rxPeerId: string) {
     const transfer = this.activeTransfers.get(rxPeerId);
-    const channel = this.channels.get(rxPeerId);
-    if (!transfer || !channel || channel.readyState !== "open") return;
+    if (!transfer) return;
 
     if (transfer.fileIndex >= this.files.length) {
       this.onLogMessage(`All requested files transferred to [${rxPeerId}]!`);
-      // Notify client we are completely done
-      channel.send(JSON.stringify({ type: "all-complete" }));
+      if (transfer.isRelaying) {
+        this.sendRelayMessage(rxPeerId, { type: "all-complete" });
+      } else {
+        const channel = this.channels.get(rxPeerId);
+        channel?.send(JSON.stringify({ type: "all-complete" }));
+      }
       return;
     }
 
     const file = this.files[transfer.fileIndex];
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    this.onLogMessage(`Streaming file ${transfer.fileIndex + 1}/${this.files.length}: ${file.name}`);
+    this.onLogMessage(`Streaming file ${transfer.fileIndex + 1}/${this.files.length}: ${file.name} (via ${transfer.isRelaying ? "Relay" : "Direct P2P"})`);
 
-    channel.send(JSON.stringify({
+    const header = {
       type: "header",
       fileIndex: transfer.fileIndex,
       fileName: file.name,
       fileSize: file.size,
       totalChunks,
-    }));
+    };
+
+    if (transfer.isRelaying) {
+      this.sendRelayMessage(rxPeerId, header);
+    } else {
+      const channel = this.channels.get(rxPeerId);
+      if (channel && channel.readyState === "open") {
+        channel.send(JSON.stringify(header));
+      }
+    }
+  }
+
+  private sendRelayMessage(targetPeerId: string, payload: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+      this.ws.send(JSON.stringify({
+        type: "relay-msg",
+        targetPeerId,
+        payload
+      }));
+    }
   }
 
   private async handleReceiverAck(rxPeerId: string, message: any) {
@@ -198,7 +293,6 @@ export class P2PSender {
     if (!transfer || !channel || channel.readyState !== "open") return;
 
     if (type === "ready") {
-      // Receiver says they are ready. They might request resume index
       const startFrom = resumeChunkIndex ? Number(resumeChunkIndex) : 0;
       transfer.chunkIndex = startFrom;
       transfer.bytesSent = startFrom * CHUNK_SIZE;
@@ -209,7 +303,6 @@ export class P2PSender {
       this.streamFileChunks(rxPeerId);
     } 
     else if (type === "ack") {
-      // Real-time progressive ack from receiver
       const file = this.files[fileIndex];
       const bytesAcked = Math.min(file.size, (chunkIndex + 1) * CHUNK_SIZE);
       const percent = Math.round((bytesAcked / file.size) * 100);
@@ -229,41 +322,93 @@ export class P2PSender {
           speed,
           eta,
           status: "transferring",
+          connectionType: "Direct",
         });
       }
     }
     else if (type === "download-complete") {
-      // Receiver fully completed and compiled this file
       this.onLogMessage(`File [${this.files[fileIndex].name}] downloaded successfully by receiver.`);
       transfer.fileIndex = fileIndex + 1;
       transfer.chunkIndex = 0;
       transfer.bytesSent = 0;
       transfer.isTransferring = false;
+      this.sendNextFileHeader(rxPeerId);
+    }
+  }
 
-      // Start next file
+  private handleRelayMessage(rxPeerId: string, message: any) {
+    const { type, fileIndex, chunkIndex, resumeChunkIndex } = message;
+    const transfer = this.activeTransfers.get(rxPeerId);
+    if (!transfer) return;
+
+    if (type === "ready") {
+      const startFrom = resumeChunkIndex ? Number(resumeChunkIndex) : 0;
+      transfer.chunkIndex = startFrom;
+      transfer.bytesSent = startFrom * CHUNK_SIZE;
+      transfer.startTime = Date.now();
+      transfer.isTransferring = true;
+      
+      this.onLogMessage(`[Relay] Starting streaming [${this.files[fileIndex].name}] from chunk ${startFrom}`);
+      this.streamFileChunks(rxPeerId);
+    }
+    else if (type === "ack") {
+      transfer.isWaitingForAck = false;
+
+      const file = this.files[fileIndex];
+      const bytesAcked = Math.min(file.size, (chunkIndex + 1) * CHUNK_SIZE);
+      const percent = Math.round((bytesAcked / file.size) * 100);
+      const now = Date.now();
+      const lastUpdate = this.lastProgressUpdates.get(rxPeerId) || 0;
+
+      if (now - lastUpdate > 150 || percent === 100) {
+        this.lastProgressUpdates.set(rxPeerId, now);
+        const { speed, eta } = calculateSpeedAndETA(bytesAcked, file.size, transfer.startTime);
+
+        this.onProgressUpdate(rxPeerId, {
+          fileIndex,
+          fileName: file.name,
+          fileSize: file.size,
+          bytesSentOrReceived: bytesAcked,
+          percent,
+          speed,
+          eta,
+          status: "transferring",
+          connectionType: "Relayed",
+        });
+      }
+    }
+    else if (type === "download-complete") {
+      this.onLogMessage(`[Relay] File [${this.files[fileIndex].name}] completed successfully.`);
+      transfer.fileIndex = fileIndex + 1;
+      transfer.chunkIndex = 0;
+      transfer.bytesSent = 0;
+      transfer.isTransferring = false;
       this.sendNextFileHeader(rxPeerId);
     }
   }
 
   private async streamFileChunks(rxPeerId: string) {
     const transfer = this.activeTransfers.get(rxPeerId);
+    if (!transfer || !transfer.isTransferring) return;
+
     const channel = this.channels.get(rxPeerId);
-    if (!transfer || !channel || channel.readyState !== "open" || !transfer.isTransferring) return;
+    if (!transfer.isRelaying && (!channel || channel.readyState !== "open")) return;
 
     const file = this.files[transfer.fileIndex];
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
-    channel.bufferedAmountLowThreshold = 65536; // Wait to drain when low (64KB)
+    if (!transfer.isRelaying && channel) {
+      channel.bufferedAmountLowThreshold = 65536;
+    }
 
     while (transfer.chunkIndex < totalChunks && transfer.isTransferring) {
-      if (channel.readyState !== "open") {
+      if (!transfer.isRelaying && channel && channel.readyState !== "open") {
         this.onLogMessage(`Channel closed, aborting stream for [${rxPeerId}]`);
         break;
       }
 
-      // Check overflow limit
-      // Throttling mechanism (1MB limit keeps memory and backpressure beautifully safe)
-      if (channel.bufferedAmount > 1024 * 1024) {
+      // Check overflow limit for direct P2P
+      if (!transfer.isRelaying && channel && channel.bufferedAmount > 1024 * 1024) {
         await new Promise<void>((resolve) => {
           const onLow = () => {
             channel.removeEventListener("bufferedamountlow", onLow);
@@ -278,11 +423,25 @@ export class P2PSender {
       const sliced = file.slice(start, end);
       const buffer = await sliced.arrayBuffer();
 
-      // Client-side encryption
       const encrypted = await encryptChunk(this.cryptoKey, buffer);
 
-      // Send raw payload
-      channel.send(encrypted);
+      if (transfer.isRelaying) {
+        const base64 = arrayBufferToBase64(encrypted);
+        this.sendRelayMessage(rxPeerId, {
+          type: "chunk",
+          fileIndex: transfer.fileIndex,
+          chunkIndex: transfer.chunkIndex,
+          data: base64,
+        });
+
+        // Pacing flow control: wait for receiver ACK
+        transfer.isWaitingForAck = true;
+        while (transfer.isWaitingForAck && transfer.isTransferring) {
+          await new Promise((resolve) => setTimeout(resolve, 5));
+        }
+      } else if (channel) {
+        channel.send(encrypted);
+      }
 
       transfer.chunkIndex++;
       transfer.bytesSent += buffer.byteLength;
@@ -290,7 +449,11 @@ export class P2PSender {
 
     if (transfer.chunkIndex >= totalChunks && transfer.isTransferring) {
       this.onLogMessage(`Sent all encrypted chunks for: ${file.name}. Finalizing...`);
-      channel.send(JSON.stringify({ type: "file-end", fileIndex: transfer.fileIndex }));
+      if (transfer.isRelaying) {
+        this.sendRelayMessage(rxPeerId, { type: "file-end", fileIndex: transfer.fileIndex });
+      } else if (channel) {
+        channel.send(JSON.stringify({ type: "file-end", fileIndex: transfer.fileIndex }));
+      }
     }
   }
 
@@ -316,6 +479,9 @@ export class P2PReceiver {
   private startTime = 0;
   private bytesCompleted = 0;
   private lastProgressUpdate = 0;
+
+  private senderPeerId: string | null = null;
+  private isRelaying = false;
 
   // Track currently processing file metadata
   private currentFile: {
@@ -355,7 +521,11 @@ export class P2PReceiver {
       this.ws.onmessage = async (event) => {
         try {
           const message = JSON.parse(event.data);
-          const { type, payload } = message;
+          const { type, senderPeerId, payload } = message;
+
+          if (senderPeerId) {
+            this.senderPeerId = senderPeerId;
+          }
 
           if (type === "error") {
             this.onLogMessage(`Gateway error: ${payload || message.message}`);
@@ -374,6 +544,8 @@ export class P2PReceiver {
           } else if (type === "sender-disconnected") {
             this.onLogMessage("The sender went offline. Pausing/Disconnecting transfer flow.");
             this.onStatusChange("interrupted");
+          } else if (type === "relay-msg" && payload) {
+            await this.handleRelayedMessage(payload);
           }
         } catch (err) {
           console.error("Receiver signaling parse error:", err);
@@ -396,6 +568,16 @@ export class P2PReceiver {
     this.onStatusChange("idle");
   }
 
+  private sendRelayMessage(payload: any) {
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.senderPeerId) {
+      this.ws.send(JSON.stringify({
+        type: "relay-msg",
+        targetPeerId: this.senderPeerId,
+        payload
+      }));
+    }
+  }
+
   private async setupRTCPeerConnection(offer: any) {
     const pc = new RTCPeerConnection(ICE_CONFIG);
     this.pc = pc;
@@ -413,9 +595,11 @@ export class P2PReceiver {
       this.onLogMessage(`P2P Network Link: ${pc.connectionState}`);
       if (pc.connectionState === "connected") {
         this.onStatusChange("connecting");
-      } else if (pc.connectionState === "disconnected" || pc.connectionState === "failed") {
-        this.onStatusChange("failed");
-        this.onLogMessage("P2P communication lost.");
+      } else if (pc.connectionState === "failed") {
+        this.onLogMessage("P2P connection failed. Awaiting WebSocket relay fallback...");
+        // isRelaying is dynamically set to true as soon as we receive "header" via relay-msg
+      } else if (pc.connectionState === "disconnected") {
+        this.onLogMessage("P2P communication disconnected.");
       }
     };
 
@@ -476,10 +660,6 @@ export class P2PReceiver {
       this.startTime = Date.now();
       this.bytesCompleted = 0;
 
-      // Reset DB cached entries for this specific room and file before starting fresh
-      // (This prevents garbage overlays, but we can do validation)
-      // Auto-Resume check: See if we have chunks in DB. If yes, count them.
-      // For simplicity here, we clear and start clean, but let's send 'ready' with resumeChunkIndex = 0
       this.channel?.send(JSON.stringify({
         type: "ready",
         fileIndex,
@@ -537,6 +717,85 @@ export class P2PReceiver {
     }
   }
 
+  private async handleRelayedMessage(message: any) {
+    const { type, fileIndex, fileName, fileSize, totalChunks, chunkIndex, data } = message;
+
+    if (type === "header") {
+      this.isRelaying = true;
+      this.onStatusChange("transferring");
+      this.onLogMessage(`[Relay] Retrieving File Header: ${fileName} (${(fileSize / (1024 * 1024)).toFixed(2)} MB)`);
+      this.currentFile = {
+        index: fileIndex,
+        name: fileName,
+        size: fileSize,
+        totalChunks,
+        receivedChunks: 0,
+      };
+
+      this.startTime = Date.now();
+      this.bytesCompleted = 0;
+
+      this.sendRelayMessage({
+        type: "ready",
+        fileIndex,
+        resumeChunkIndex: 0, // Starts at the beginning
+      });
+    } 
+    else if (type === "chunk") {
+      const arrayBuffer = base64ToArrayBuffer(data);
+      await this.handleBinaryChunk(arrayBuffer);
+    }
+    else if (type === "file-end") {
+      if (!this.currentFile) return;
+      this.onLogMessage(`[Relay] Received all packets for [${this.currentFile.name}]. Merging on disk...`);
+      
+      try {
+        const fileSlices = await compileFilesFromDB(this.roomId, this.currentFile.index, this.currentFile.totalChunks);
+        const compiledBlob = new Blob(fileSlices);
+        const compiledUrl = URL.createObjectURL(compiledBlob);
+
+        this.compiledFilesList.push({
+          name: this.currentFile.name,
+          url: compiledUrl,
+          size: this.currentFile.size,
+        });
+
+        this.onFilesCompiled([...this.compiledFilesList]);
+
+        // Auto trigger download in browser
+        const anchor = document.createElement("a");
+        anchor.href = compiledUrl;
+        anchor.download = this.currentFile.name;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+
+        this.onLogMessage(`[Relay] Compiled file [${this.currentFile.name}] downloaded successfully.`);
+
+        // Report back to sender via relay
+        this.sendRelayMessage({
+          type: "download-complete",
+          fileIndex: this.currentFile.index,
+        });
+
+        this.ws?.send(JSON.stringify({
+          type: "download-complete",
+          payload: { fileIndex: this.currentFile.index }
+        }));
+
+      } catch (err: any) {
+        this.onLogMessage(`Compilation failure on merged file: ${err.message}`);
+      }
+    }
+    else if (type === "all-complete") {
+      this.onLogMessage("[Relay] Locker download accomplished entirely!");
+      this.onStatusChange("complete");
+      
+      // Clean DB to free up user space
+      clearRoomFromDB(this.roomId).catch((err) => console.error("Database purge failure:", err));
+    }
+  }
+
   private async handleBinaryChunk(data: ArrayBuffer) {
     if (!this.currentFile || !this.cryptoKey) return;
 
@@ -552,8 +811,14 @@ export class P2PReceiver {
       this.bytesCompleted += decrypted.byteLength;
 
       // Periodic Acknowledgment frame so Sender doesn't flood and measures throughput correctly
-      // We send it every chunk or every 4 chunks, immediately keeps backpressure safe and visual smooth
-      if (currentIdx % 4 === 0 || this.currentFile.receivedChunks === this.currentFile.totalChunks) {
+      if (this.isRelaying) {
+        // Send ACK for every chunk in relay mode to unblock the sender pacing loop
+        this.sendRelayMessage({
+          type: "ack",
+          fileIndex: this.currentFile.index,
+          chunkIndex: currentIdx,
+        });
+      } else if (currentIdx % 4 === 0 || this.currentFile.receivedChunks === this.currentFile.totalChunks) {
         this.channel?.send(JSON.stringify({
           type: "ack",
           fileIndex: this.currentFile.index,
@@ -577,6 +842,7 @@ export class P2PReceiver {
           speed,
           eta,
           status: "transferring",
+          connectionType: this.isRelaying ? "Relayed" : "Direct",
         });
       }
 

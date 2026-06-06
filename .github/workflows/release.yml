@@ -33,9 +33,93 @@ jobs:
 
       - name: Build Standalone Binaries (pkg)
         run: |
-          npx pkg dist/server.cjs --targets node18-win-x64,node18-linux-x64 --out-path release
-          mv release/server-win.exe release/sendfiles-windows.exe
-          mv release/server-linux release/sendfiles-linux
+          npx pkg dist/server.cjs --targets node18-win-x64,node18-linux-x64,node18-macos-x64,node18-macos-arm64 --out-path release
+          # Rename standing binaries with safe find checks to handle suffixes
+          find release -type f -name "*win*" -exec mv {} release/sendfiles-windows.exe \;
+          find release -type f -name "*linux*" -exec mv {} release/sendfiles-linux \;
+          find release -type f -name "*macos-x64*" -exec mv {} release/sendfiles-macos-intel \;
+          find release -type f -name "*macos-arm64*" -exec mv {} release/sendfiles-macos-silicon \;
+
+      - name: Build Portable Signed ZIP Packages
+        run: |
+          # Create packaging folder structures
+          mkdir -p win-pkg/bin win-pkg/dist
+          mkdir -p linux-pkg/bin linux-pkg/dist
+          mkdir -p macos-pkg/bin macos-pkg/dist
+
+          # Copy compiled files
+          cp -r dist/* win-pkg/dist/
+          cp -r dist/* linux-pkg/dist/
+          cp -r dist/* macos-pkg/dist/
+
+          # Write Windows start batch script
+          cat << 'EOF' > win-pkg/start-windows.bat
+          @echo off
+          title SendFiles Portable Server
+          echo ==================================================
+          echo Starting SendFiles Portable Server (Signed Runtime)
+          echo ==================================================
+          cd /d "%~dp0"
+          if not exist "bin\node.exe" (
+              echo Error: bin\node.exe not found!
+              pause
+              exit /b 1
+          )
+          set NODE_ENV=production
+          bin\node.exe dist\server.cjs
+          pause
+          EOF
+
+          # Write Linux start shell script
+          cat << 'EOF' > linux-pkg/start-linux.sh
+          #!/bin/bash
+          echo "=================================================="
+          echo "Starting SendFiles Portable Server (Linux Runtime)"
+          echo "=================================================="
+          DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+          cd "$DIR"
+          chmod +x bin/node
+          export NODE_ENV=production
+          bin/node dist/server.cjs
+          EOF
+          chmod +x linux-pkg/start-linux.sh
+
+          # Write macOS start shell command
+          cat << 'EOF' > macos-pkg/start-macos.command
+          #!/bin/bash
+          echo "=================================================="
+          echo "Starting SendFiles Portable Server (macOS Runtime)"
+          echo "=================================================="
+          DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" >/dev/null 2>&1 && pwd )"
+          cd "$DIR"
+          chmod +x bin/node
+          export NODE_ENV=production
+          bin/node dist/server.cjs
+          EOF
+          chmod +x macos-pkg/start-macos.command
+
+          # Download official Node.js binaries
+          NODE_VERSION="v20.12.2"
+          
+          # Windows node.exe (digitally signed)
+          curl -sL "https://nodejs.org/dist/${NODE_VERSION}/win-x64/node.exe" -o win-pkg/bin/node.exe
+          
+          # Linux node binary
+          curl -sL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-linux-x64.tar.xz" -o linux-node.tar.xz
+          tar -xf linux-node.tar.xz
+          cp node-${NODE_VERSION}-linux-x64/bin/node linux-pkg/bin/node
+          rm -rf linux-node.tar.xz node-${NODE_VERSION}-linux-x64
+          
+          # macOS node binary
+          curl -sL "https://nodejs.org/dist/${NODE_VERSION}/node-${NODE_VERSION}-darwin-x64.tar.gz" -o macos-node.tar.gz
+          tar -xf macos-node.tar.gz
+          cp node-${NODE_VERSION}-darwin-x64/bin/node macos-pkg/bin/node
+          rm -rf macos-node.tar.gz node-${NODE_VERSION}-darwin-x64
+
+          # Zip/Compress portable folders into release output directory
+          zip -r release/sendfiles-portable-windows.zip win-pkg
+          tar -czf release/sendfiles-portable-linux.tar.gz linux-pkg
+          zip -r release/sendfiles-portable-macos.zip macos-pkg
 
       - name: Create GitHub Release
         id: create_release
@@ -43,11 +127,35 @@ jobs:
         with:
           tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
           name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Release' }}
+          body: |
+            ## SendFiles Releases
+            
+            Welcome to the latest release of **SendFiles**! We provide two types of distributions for your convenience:
+            
+            ### 🚀 Option 1: Standalone Single-File Executables (Zero Setup)
+            Double-click the binary to launch the sharing portal immediately.
+            * 🪟 **Windows**: `sendfiles-windows.exe`
+            * 🐧 **Linux**: `sendfiles-linux`
+            * 🍎 **macOS (Intel)**: `sendfiles-macos-intel`
+            * 🍎 **macOS (Apple Silicon)**: `sendfiles-macos-silicon`
+            
+            ### 🛡️ Option 2: Portable Signed Packages (Antivirus & WDAC Bypass)
+            If your operating system blocks the standalone executable due to security policies (e.g. *Windows Defender Application Control (WDAC)* or *SmartScreen*), download the corresponding portable package instead. These run using official, signed Node.js binaries and bypass security policy blocks.
+            1. Download and unzip/unpack the archive.
+            2. Double-click the launcher script (`start-windows.bat`, `start-linux.sh`, or `start-macos.command`).
+            
+            * 🪟 **Windows Portable**: `sendfiles-portable-windows.zip`
+            * 🐧 **Linux Portable**: `sendfiles-portable-linux.tar.gz`
+            * 🍎 **macOS Portable**: `sendfiles-portable-macos.zip`
           files: |
             release/sendfiles-windows.exe
             release/sendfiles-linux
+            release/sendfiles-macos-intel
+            release/sendfiles-macos-silicon
+            release/sendfiles-portable-windows.zip
+            release/sendfiles-portable-linux.tar.gz
+            release/sendfiles-portable-macos.zip
           draft: false
           prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
-          generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
