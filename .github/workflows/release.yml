@@ -1,0 +1,49 @@
+name: Compile Standalone Release Binaries
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build & Package Standalone Binaries
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 18
+          cache: 'npm'
+
+      - name: Install Dependencies
+        run: npm ci
+
+      - name: Compile Frontend and Backend
+        run: npm run build
+
+      - name: Build Standalone Binaries (pkg)
+        run: |
+          npx pkg dist/server.cjs --targets node18-win-x64,node18-linux-x64 --out-path release
+          mv release/server-win.exe release/sendfiles-windows.exe
+          mv release/server-linux release/sendfiles-linux
+
+      - name: Create GitHub Release
+        id: create_release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            release/sendfiles-windows.exe
+            release/sendfiles-linux
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
