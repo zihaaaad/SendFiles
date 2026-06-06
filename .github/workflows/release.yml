@@ -2,6 +2,8 @@ name: Compile Standalone Release Binaries
 
 on:
   push:
+    branches:
+      - main
     tags:
       - 'v*'
 
@@ -39,11 +41,13 @@ jobs:
         id: create_release
         uses: softprops/action-gh-release@v2
         with:
+          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'latest' }}
+          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || 'Latest Release' }}
           files: |
             release/sendfiles-windows.exe
             release/sendfiles-linux
           draft: false
-          prerelease: false
+          prerelease: ${{ !startsWith(github.ref, 'refs/tags/') }}
           generate_release_notes: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
