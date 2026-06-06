@@ -955,8 +955,35 @@ export default function App() {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const localPeers = peers.filter(p => p.ip === myPublicIp);
-  const globalPeers = peers.filter(p => p.ip !== myPublicIp);
+  const isLocalIp = (ip: string): boolean => {
+    if (!ip) return false;
+    let cleanIp = ip;
+    if (ip.startsWith("::ffff:")) {
+      cleanIp = ip.substring(7);
+    }
+    if (cleanIp === "127.0.0.1" || cleanIp === "::1" || cleanIp === "localhost") {
+      return true;
+    }
+    if (cleanIp.startsWith("10.")) return true;
+    if (cleanIp.startsWith("192.168.")) return true;
+    if (cleanIp.startsWith("169.254.")) return true;
+    if (cleanIp.startsWith("172.")) {
+      const parts = cleanIp.split(".");
+      if (parts.length >= 2) {
+        const secondOctet = parseInt(parts[1], 10);
+        if (secondOctet >= 16 && secondOctet <= 31) return true;
+      }
+    }
+    if (cleanIp.toLowerCase().startsWith("fe80:") || 
+        cleanIp.toLowerCase().startsWith("fc00:") || 
+        cleanIp.toLowerCase().startsWith("fd00:")) {
+      return true;
+    }
+    return false;
+  };
+
+  const localPeers = peers.filter(p => p.ip === myPublicIp || (isLocalIp(p.ip) && isLocalIp(myPublicIp)));
+  const globalPeers = peers.filter(p => p.ip !== myPublicIp && !(isLocalIp(p.ip) && isLocalIp(myPublicIp)));
 
   const qrUrl = resolvedOrigin;
 

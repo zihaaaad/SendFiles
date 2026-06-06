@@ -14,6 +14,39 @@ import { exec } from "child_process";
 
 dotenv.config();
 
+function isLocalIp(ip: string): boolean {
+  if (!ip) return false;
+  let cleanIp = ip;
+  if (ip.startsWith("::ffff:")) {
+    cleanIp = ip.substring(7);
+  }
+  if (cleanIp === "127.0.0.1" || cleanIp === "::1" || cleanIp === "localhost") {
+    return true;
+  }
+  if (cleanIp.startsWith("10.")) return true;
+  if (cleanIp.startsWith("192.168.")) return true;
+  if (cleanIp.startsWith("169.254.")) return true;
+  if (cleanIp.startsWith("172.")) {
+    const parts = cleanIp.split(".");
+    if (parts.length >= 2) {
+      const secondOctet = parseInt(parts[1], 10);
+      if (secondOctet >= 16 && secondOctet <= 31) return true;
+    }
+  }
+  if (cleanIp.toLowerCase().startsWith("fe80:") || 
+      cleanIp.toLowerCase().startsWith("fc00:") || 
+      cleanIp.toLowerCase().startsWith("fd00:")) {
+    return true;
+  }
+  return false;
+}
+
+function ipsMatchForDiscovery(ipA: string, ipB: string): boolean {
+  if (ipA === ipB) return true;
+  if (isLocalIp(ipA) && isLocalIp(ipB)) return true;
+  return false;
+}
+
 const app = express();
 const server = http.createServer(app);
 const PORT = 3000;
@@ -139,7 +172,7 @@ app.get("/api/rooms", (req, res) => {
   const now = Date.now();
 
   for (const room of rooms.values()) {
-    if (room.expiresAt > now && room.creatorIp === clientIp && room.downloadCount < room.maxDownloads) {
+    if (room.expiresAt > now && ipsMatchForDiscovery(room.creatorIp, clientIp) && room.downloadCount < room.maxDownloads) {
       activeRooms.push({
         roomId: room.id,
         expiresAt: room.expiresAt,
