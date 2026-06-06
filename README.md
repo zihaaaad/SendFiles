@@ -74,8 +74,16 @@ To run the application locally, follow these steps:
 
 ### Installation & Launching
 
-#### Option A: One-Click Launchers (Simplified)
-For a simplified setup that checks for Node.js, installs any missing dependencies, and launches the development server automatically:
+#### Option A: Standalone Executables (Zero-Setup, Recommended)
+For a zero-dependency, single-click setup that does not require installing Node.js or npm:
+1. Navigate to the **GitHub Releases** page of this repository.
+2. Download the pre-compiled standalone package for your operating system:
+   - **Windows**: `sendfiles-windows.exe`
+   - **Linux**: `sendfiles-linux`
+3. Double-click the executable to launch. It will automatically boot the server, resolve network IPv4 connections, and open your web browser.
+
+#### Option B: One-Click Source Launchers (Simplified)
+For running from source code with automatic dependency resolution:
 - **Windows**: Double-click the `run-windows.bat` launcher in the project root.
 - **Linux / macOS**: Run the launcher from your terminal:
   ```bash
@@ -83,7 +91,7 @@ For a simplified setup that checks for Node.js, installs any missing dependencie
   ./run-linux.sh
   ```
 
-#### Option B: Manual Commands
+#### Option C: Manual Commands
 1. Clone the repository and navigate into the project directory.
 2. Install the Node dependencies:
    ```bash
@@ -113,6 +121,12 @@ To build the static bundle and start the production server:
 ```bash
 npm run build
 npm start
+```
+
+To compile standalone executables locally:
+
+```bash
+npm run package
 ```
 
 ### Hosting Guidelines
