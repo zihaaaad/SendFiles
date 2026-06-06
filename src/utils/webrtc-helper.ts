@@ -78,7 +78,10 @@ export async function getWebSocketURL(): Promise<string> {
   const isLocalOrCloudRun = loc.host.includes("localhost") || 
                             loc.host.includes("127.0.0.1") || 
                             loc.host.includes("run.app") || 
-                            loc.host.includes("3000");
+                            loc.host.includes("3000") ||
+                            loc.host.includes("3001") ||
+                            loc.hostname.endsWith(".local") ||
+                            /^(?:192\.168\.|10\.|172\.(?:1[6-9]|2[0-9]|3[0-1])\.|169\.254\.)/.test(loc.hostname);
 
   let targetHost = loc.host;
   let targetProtocol = loc.protocol === "https:" ? "wss:" : "ws:";

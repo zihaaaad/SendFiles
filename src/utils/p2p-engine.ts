@@ -61,8 +61,8 @@ export class P2PSender {
     this.peerId = "sender_" + Math.random().toString(36).substring(2, 6);
   }
 
-  public start() {
-    const wsUrl = `${getWebSocketURL()}?roomId=${this.roomId}&peerId=${this.peerId}&role=sender`;
+  public async start() {
+    const wsUrl = `${await getWebSocketURL()}?roomId=${this.roomId}&peerId=${this.peerId}&role=sender`;
     this.onLogMessage(`Connecting to signaling gateway: ${this.roomId}`);
     this.ws = new WebSocket(wsUrl);
 
@@ -511,7 +511,7 @@ export class P2PReceiver {
       this.cryptoKey = await importKeyFromHex(this.encryptionKeyHex);
       this.onLogMessage("Keys decrypted successfully.");
 
-      const wsUrl = `${getWebSocketURL()}?roomId=${this.roomId}&peerId=${this.peerId}&role=receiver`;
+      const wsUrl = `${await getWebSocketURL()}?roomId=${this.roomId}&peerId=${this.peerId}&role=receiver`;
       this.ws = new WebSocket(wsUrl);
 
       this.ws.onopen = () => {
