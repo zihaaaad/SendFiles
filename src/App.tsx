@@ -956,14 +956,14 @@ export default function App() {
   // Main Layout Render
   // ----------------------------------------------------
   return (
-    <div className="min-h-screen bg-brand-bg text-[#E2E8F0] flex flex-col font-sans antialiased relative overflow-x-hidden pb-10">
+    <div className="min-h-screen bg-brand-bg text-slate-800 flex flex-col font-sans antialiased relative overflow-x-hidden pb-10">
       
       {/* Background ambient lighting */}
-      <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-[#265c34]/5 rounded-full blur-[140px] pointer-events-none" />
-      <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#265c34]/5 rounded-full blur-[120px] pointer-events-none" />
+      <div className="absolute top-[-10%] left-[20%] w-[500px] h-[500px] bg-[#265c34]/3 rounded-full blur-[140px] pointer-events-none" />
+      <div className="absolute bottom-[-10%] right-[10%] w-[400px] h-[400px] bg-[#265c34]/3 rounded-full blur-[120px] pointer-events-none" />
 
       {/* Header */}
-      <header className="relative w-full z-10 border-b border-brand-border bg-brand-bg/40 backdrop-blur-md">
+      <header className="relative w-full z-10 border-b border-brand-border bg-brand-bg/60 backdrop-blur-md">
         <div className="max-w-4xl mx-auto px-4 h-16 flex items-center justify-between">
           
           <div className="flex items-center space-x-2.5 select-none">
@@ -971,8 +971,8 @@ export default function App() {
               <Network size={16} className="animate-pulse" />
             </div>
             <div>
-              <span className="text-xs font-bold tracking-wider text-white uppercase block">SendFiles P2P</span>
-              <span className="text-[8.5px] font-mono text-[#7bd18f] tracking-widest uppercase block -mt-1 font-bold">Secure Direct P2P File Sharing</span>
+              <span className="text-xs font-bold tracking-wider text-slate-905 uppercase block">SendFiles P2P</span>
+              <span className="text-[8.5px] font-mono text-[#265c34] tracking-widest uppercase block -mt-1 font-bold">Secure Direct P2P File Sharing</span>
             </div>
           </div>
 
@@ -980,9 +980,9 @@ export default function App() {
             {view === "home" && tab === "beam" && (
               <div className="flex items-center space-x-1.5">
                 <span className={`w-2 h-2 rounded-full ${
-                  socketStatus === "online" ? "bg-emerald-400 live-pulse" : socketStatus === "connecting" ? "bg-amber-400 animate-pulse" : "bg-rose-500"
+                  socketStatus === "online" ? "bg-emerald-600 live-pulse" : socketStatus === "connecting" ? "bg-amber-500 animate-pulse" : "bg-rose-600"
                 }`} />
-                <span className="text-[8.5px] font-mono text-slate-400 font-bold tracking-wider uppercase">
+                <span className="text-[8.5px] font-mono text-slate-500 font-bold tracking-wider uppercase">
                   {socketStatus === "online" ? "Active" : socketStatus === "connecting" ? "Syncing..." : "Offline"}
                 </span>
               </div>
@@ -997,7 +997,7 @@ export default function App() {
                      window.location.hash = "";
                   }
                 }}
-                className="flex items-center text-[10.5px] font-mono font-bold tracking-wider hover:text-white text-[#7bd18f] cursor-pointer transition-colors"
+                className="flex items-center text-[10.5px] font-mono font-bold tracking-wider hover:text-[#265c34] text-[#347442] cursor-pointer transition-colors"
               >
                 <ArrowLeft size={12} className="mr-1" /> Back
               </button>
@@ -1016,18 +1016,18 @@ export default function App() {
             {/* Identity card */}
             <div className="glass-panel rounded-xl p-4 flex items-center justify-between gap-3 shadow-md">
               <div className="flex items-center space-x-3 min-w-0">
-                <div className="w-9 h-9 bg-[#265c34]/15 text-[#7bd18f] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/20">
+                <div className="w-9 h-9 bg-[#265c34]/8 text-[#265c34] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/15">
                   <User size={16} />
                 </div>
                 <div className="min-w-0">
-                  <span className="text-[8.5px] font-mono text-slate-450 uppercase tracking-widest font-bold block">Your Device ID</span>
-                  <span className="text-sm font-extrabold text-white block truncate">{profileName}</span>
+                  <span className="text-[8.5px] font-mono text-slate-500 uppercase tracking-widest font-bold block">Your Device ID</span>
+                  <span className="text-sm font-extrabold text-slate-900 block truncate">{profileName}</span>
                 </div>
               </div>
 
               <button
                 onClick={handleRegenName}
-                className="px-3 py-1.5 text-[10px] font-mono font-bold text-slate-300 hover:text-white border border-brand-border bg-slate-900/40 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-3 py-1.5 text-[10px] font-mono font-bold text-slate-600 hover:text-slate-900 border border-slate-200 bg-slate-105/80 hover:bg-slate-100 rounded-lg transition-all cursor-pointer flex items-center gap-1.5"
               >
                 <RefreshCw size={11} className="animate-spin-slow" /> Change
               </button>
@@ -1035,7 +1035,7 @@ export default function App() {
 
             {/* Local Network QR Code Link */}
             <div className="glass-panel rounded-xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-md">
-              <div className="bg-white p-1 rounded-lg shrink-0">
+              <div className="bg-white p-1 rounded-lg shrink-0 border border-slate-200">
                 <img 
                   src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrUrl)}`} 
                   alt="Network QR Code" 
@@ -1043,25 +1043,25 @@ export default function App() {
                 />
               </div>
               <div className="space-y-1.5 text-center sm:text-left min-w-0 select-none">
-                <span className="text-[8.5px] font-mono text-[#7bd18f] uppercase tracking-widest font-bold block">Local Network Portal</span>
-                <h3 className="text-xs font-bold text-white uppercase tracking-wider">Connect Mobile Devices</h3>
-                <p className="text-[10.5px] text-slate-455 leading-relaxed font-medium">
+                <span className="text-[8.5px] font-mono text-[#265c34] uppercase tracking-widest font-bold block">Local Network Portal</span>
+                <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Connect Mobile Devices</h3>
+                <p className="text-[10.5px] text-slate-600 leading-relaxed font-medium">
                   Scan this code with your phone to open SendFiles and pair instantly.
                 </p>
-                <div className="text-[9.5px] font-mono text-slate-400 bg-slate-950/30 px-2 py-0.5 rounded border border-brand-border inline-block max-w-full truncate font-bold">
+                <div className="text-[9.5px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block max-w-full truncate font-bold">
                   {qrUrl}
                 </div>
               </div>
             </div>
 
             {/* Simple Mobile Tab Navigation */}
-            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-950/40 rounded-xl border border-brand-border select-none">
+            <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl border border-slate-200 select-none">
               <button
                 onClick={() => setTab("beam")}
                 className={`py-2.5 rounded-lg text-[10px] font-mono tracking-wider font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   tab === "beam"
                     ? "bg-[#265c34] text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <Cpu size={12} /> Direct Share
@@ -1071,7 +1071,7 @@ export default function App() {
                 className={`py-2.5 rounded-lg text-[10px] font-mono tracking-wider font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   tab === "vault-create"
                     ? "bg-[#265c34] text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <Lock size={12} /> Create Link
@@ -1081,7 +1081,7 @@ export default function App() {
                 className={`py-2.5 rounded-lg text-[10px] font-mono tracking-wider font-bold uppercase transition-all cursor-pointer flex items-center justify-center gap-1 ${
                   tab === "vault-discover"
                     ? "bg-[#265c34] text-white shadow-sm"
-                    : "text-slate-400 hover:text-white"
+                    : "text-slate-500 hover:text-slate-800"
                 }`}
               >
                 <Compass size={12} /> Receive Code
@@ -1096,8 +1096,8 @@ export default function App() {
                 
                 {/* Guide Panel */}
                 <div className="glass-panel p-4.5 rounded-xl space-y-2.5 select-none">
-                  <h3 className="text-xs font-bold text-white uppercase tracking-wider">How to send files</h3>
-                  <p className="text-xs text-slate-400 leading-relaxed leading-normal">
+                  <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">How to send files</h3>
+                  <p className="text-xs text-slate-600 leading-relaxed leading-normal">
                     Open this page on another device. Ensure both are online. Your devices will automatically detect each other below. Click the recipient to select a file and send.
                   </p>
                 </div>
@@ -1105,20 +1105,20 @@ export default function App() {
                 {/* Recipient list */}
                 <div className="space-y-3">
                   <div className="flex justify-between items-center select-none pl-1">
-                    <span className="text-[9px] font-mono text-slate-400 uppercase tracking-widest font-black flex items-center">
-                      <Wifi size={11} className="mr-1.5 text-[#7bd18f] live-pulse" /> Discovered Devices
+                    <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest font-black flex items-center">
+                      <Wifi size={11} className="mr-1.5 text-[#265c34] live-pulse" /> Discovered Devices
                     </span>
-                    <span className="text-[9px] font-mono text-slate-400 font-bold">{peers.length} active</span>
+                    <span className="text-[9px] font-mono text-slate-500 font-bold">{peers.length} active</span>
                   </div>
 
                   {peers.length === 0 ? (
                     <div className="glass-panel rounded-xl p-8 text-center space-y-4">
-                      <div className="w-10 h-10 bg-slate-900/40 rounded-xl border border-brand-border flex items-center justify-center mx-auto text-slate-450 shadow-inner">
+                      <div className="w-10 h-10 bg-slate-100 rounded-xl border border-slate-200 flex items-center justify-center mx-auto text-slate-500 shadow-inner">
                         <Smartphone size={18} />
                       </div>
                       <div className="space-y-1.5 max-w-sm mx-auto">
-                        <h3 className="text-xs font-bold text-white">Waiting for other devices...</h3>
-                        <p className="text-[11px] text-slate-450 leading-relaxed font-medium">
+                        <h3 className="text-xs font-bold text-slate-900">Waiting for other devices...</h3>
+                        <p className="text-[11px] text-slate-650 leading-relaxed font-medium">
                           Open this URL on your phone or tablet to pair instantly.
                         </p>
                       </div>
@@ -1135,26 +1135,26 @@ export default function App() {
                     <div className="space-y-3">
                       {localPeers.length > 0 && (
                         <div className="space-y-1.5">
-                          <span className="text-[8.5px] font-mono text-[#7bd18f] font-bold uppercase tracking-widest block pl-1">Nearby Devices</span>
+                          <span className="text-[8.5px] font-mono text-[#265c34] font-bold uppercase tracking-widest block pl-1">Nearby Devices</span>
                           <div className="grid grid-cols-1 gap-2">
                             {localPeers.map(peer => (
                               <button
                                 key={peer.peerId}
                                 onClick={() => setSelectedRecipientId(peer.peerId)}
-                                className={`w-full glass-panel hover:bg-slate-900/10 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/50 bg-[#265c34]/5" : ""
+                                className={`w-full glass-panel hover:bg-[#265c34]/5 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/30 bg-[#265c34]/4" : ""
                                 }`}
                               >
                                 <div className="flex items-center space-x-3 min-w-0">
-                                  <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/25">
+                                  <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/15">
                                     <Smartphone size={14} />
                                   </div>
                                   <div className="min-w-0">
-                                    <span className="text-xs font-extrabold text-white block truncate">{peer.name}</span>
-                                    <span className="text-[9px] font-mono text-slate-450 block uppercase tracking-wider">Tap to share file</span>
+                                    <span className="text-xs font-extrabold text-slate-900 block truncate">{peer.name}</span>
+                                    <span className="text-[9px] font-mono text-slate-500 block uppercase tracking-wider">Tap to share file</span>
                                   </div>
                                 </div>
-                                <ChevronRight size={12} className="text-slate-500" />
+                                <ChevronRight size={12} className="text-slate-400" />
                               </button>
                             ))}
                           </div>
@@ -1163,26 +1163,26 @@ export default function App() {
 
                       {globalPeers.length > 0 && (
                         <div className="space-y-1.5">
-                          <span className="text-[8.5px] font-mono text-slate-450 font-bold uppercase tracking-widest block pl-1">Remote Devices</span>
+                          <span className="text-[8.5px] font-mono text-slate-500 font-bold uppercase tracking-widest block pl-1">Remote Devices</span>
                           <div className="grid grid-cols-1 gap-2">
                             {globalPeers.map(peer => (
                               <button
                                 key={peer.peerId}
                                 onClick={() => setSelectedRecipientId(peer.peerId)}
-                                className={`w-full glass-panel hover:bg-slate-900/10 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/50 bg-[#265c34]/5" : ""
+                                className={`w-full glass-panel hover:bg-[#265c34]/5 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
+                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/30 bg-[#265c34]/4" : ""
                                 }`}
                               >
                                 <div className="flex items-center space-x-3 min-w-0">
-                                  <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/25">
+                                  <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/15">
                                     <Globe size={14} />
                                   </div>
                                   <div className="min-w-0">
-                                    <span className="text-xs font-extrabold text-white block truncate">{peer.name}</span>
-                                    <span className="text-[9px] font-mono text-slate-450 block uppercase tracking-wider">Remote Connection</span>
+                                    <span className="text-xs font-extrabold text-slate-900 block truncate">{peer.name}</span>
+                                    <span className="text-[9px] font-mono text-slate-500 block uppercase tracking-wider">Remote Connection</span>
                                   </div>
                                 </div>
-                                <ChevronRight size={12} className="text-slate-500" />
+                                <ChevronRight size={12} className="text-slate-400" />
                               </button>
                             ))}
                           </div>
@@ -1196,36 +1196,36 @@ export default function App() {
                     <div className="glass-panel border-t-2 border-t-[#265c34] rounded-xl p-4.5 shadow-xl space-y-3 animate-in fade-in slide-in-from-bottom-2 duration-200">
                       <div className="flex justify-between items-center pb-1 select-none">
                         <div>
-                          <span className="text-[8.5px] font-mono text-[#7bd18f] uppercase tracking-wider font-bold">Recipient Selected</span>
-                          <h3 className="text-xs font-extrabold text-white mt-0.5">
+                          <span className="text-[8.5px] font-mono text-[#265c34] uppercase tracking-wider font-bold">Recipient Selected</span>
+                          <h3 className="text-xs font-extrabold text-slate-900 mt-0.5">
                             Send to: {peers.find(p => p.peerId === selectedRecipientId)?.name || "Device"}
                           </h3>
                         </div>
                         <button
                           onClick={() => setSelectedRecipientId(null)}
-                          className="text-slate-400 hover:text-white p-1 rounded-lg bg-slate-900/40 border border-brand-border cursor-pointer"
+                          className="text-slate-500 hover:text-slate-800 p-1 rounded-lg bg-slate-100 border border-slate-200 cursor-pointer"
                         >
                           <X size={12} />
                         </button>
                       </div>
 
-                      <div className="border border-dashed border-slate-700 bg-slate-900/20 hover:bg-slate-900/40 rounded-lg p-6 text-center cursor-pointer transition-all relative">
+                      <div className="border border-dashed border-slate-300 bg-slate-50 hover:bg-slate-100/70 rounded-lg p-6 text-center cursor-pointer transition-all relative">
                         <input
                           type="file"
                           id="direct-file-selector"
                           onChange={(e) => {
                             if (e.target.files && e.target.files[0]) {
-                              handleSelectFile(e.target.files[0]);
+                               handleSelectFile(e.target.files[0]);
                             }
                           }}
                           className="absolute inset-0 opacity-0 w-full h-full cursor-pointer"
                         />
-                        <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] rounded-full flex items-center justify-center mx-auto mb-2 border border-[#265c34]/20">
+                        <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] rounded-full flex items-center justify-center mx-auto mb-2 border border-[#265c34]/15">
                           <UploadCloud size={14} />
                         </div>
                         <div>
-                          <p className="text-xs font-bold text-white">Select File or Drop Here</p>
-                          <p className="text-[9.5px] text-slate-450 font-mono mt-0.5">Sends directly over local connection</p>
+                          <p className="text-xs font-bold text-slate-800">Select File or Drop Here</p>
+                          <p className="text-[9.5px] text-slate-500 font-mono mt-0.5">Sends directly over local connection</p>
                         </div>
                       </div>
                     </div>
@@ -1239,19 +1239,19 @@ export default function App() {
             {tab === "beam" && senderTransfer !== null && (
               <div className="glass-panel rounded-xl p-5 shadow-xl space-y-4">
                 <div className="text-center space-y-1">
-                  <span className="text-[9px] font-mono text-[#7bd18f] uppercase tracking-wider font-bold block">File Transfer status</span>
-                  <h2 className="text-xs font-extrabold text-white">
+                  <span className="text-[9px] font-mono text-[#265c34] uppercase tracking-wider font-bold block">File Transfer status</span>
+                  <h2 className="text-xs font-extrabold text-slate-900">
                     {senderTransfer.status === "waiting-acceptance" ? `Waiting for receiver to accept...` : `Transferring file...`}
                   </h2>
                 </div>
 
-                <div className="bg-slate-900/30 rounded-lg p-3 border border-brand-border flex items-center space-x-3">
-                  <div className="w-9 h-9 bg-[#265c34]/15 text-[#7bd18f] border border-[#265c34]/20 rounded-lg flex items-center justify-center shrink-0">
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200 flex items-center space-x-3">
+                  <div className="w-9 h-9 bg-[#265c34]/8 text-[#265c34] border border-[#265c34]/15 rounded-lg flex items-center justify-center shrink-0">
                     <FileText size={16} />
                   </div>
                   <div className="min-w-0 flex-1">
-                    <p className="text-xs font-bold text-white truncate">{senderTransfer.fileName}</p>
-                    <p className="text-[9.5px] font-mono text-slate-450 mt-0.5">
+                    <p className="text-xs font-bold text-slate-900 truncate">{senderTransfer.fileName}</p>
+                    <p className="text-[9.5px] font-mono text-slate-500 mt-0.5">
                       Size: {formatBytes(senderTransfer.fileSize)} • To: {senderTransfer.peerName}
                     </p>
                   </div>
@@ -1260,12 +1260,12 @@ export default function App() {
                 {senderTransfer.status === "waiting-acceptance" && (
                   <div className="flex flex-col items-center justify-center py-2 space-y-3">
                     <span className="relative flex h-5 w-5">
-                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-500 opacity-75"></span>
                       <span className="relative inline-flex rounded-full h-5 w-5 bg-[#265c34] glow-box"></span>
                     </span>
                     <button
                       onClick={cancelSenderFlow}
-                      className="px-4 py-2 bg-slate-900/80 hover:bg-rose-500/10 hover:text-rose-400 text-slate-400 border border-brand-border hover:border-rose-500/20 font-mono text-[9px] font-bold rounded-lg cursor-pointer transition-all uppercase"
+                      className="px-4 py-2 bg-slate-100 hover:bg-rose-500/10 hover:text-rose-600 text-slate-650 border border-slate-200 hover:border-rose-500/20 font-mono text-[9px] font-bold rounded-lg cursor-pointer transition-all uppercase"
                     >
                       Cancel Transfer
                     </button>
@@ -1274,12 +1274,12 @@ export default function App() {
 
                 {senderTransfer.status === "transferring" && (
                   <div className="space-y-3 py-1">
-                    <div className="space-y-1.5 font-mono text-[10px] text-slate-400">
+                    <div className="space-y-1.5 font-mono text-[10px] text-slate-500">
                       <div className="flex justify-between font-bold">
                         <span>Speed: {formatSpeed(senderTransfer.speed)}</span>
-                        <span className="text-white">{senderTransfer.percent}%</span>
+                        <span className="text-slate-900">{senderTransfer.percent}%</span>
                       </div>
-                      <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-brand-border shadow-inner">
+                      <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden border border-slate-300 shadow-inner">
                         <div 
                           className="bg-[#265c34] h-full rounded-full transition-all duration-100 glow-box" 
                           style={{ width: `${senderTransfer.percent}%` }}
@@ -1290,7 +1290,7 @@ export default function App() {
                     <div className="text-center">
                       <button
                         onClick={cancelSenderFlow}
-                        className="px-4 py-2 bg-slate-900/80 hover:bg-rose-500/10 hover:text-rose-400 text-slate-400 border border-brand-border hover:border-rose-500/20 font-mono text-[9px] font-bold rounded-lg cursor-pointer transition-all uppercase"
+                        className="px-4 py-2 bg-slate-100 hover:bg-[#265c34] hover:text-white text-slate-650 border border-slate-200 hover:border-[#265c34] font-mono text-[9px] font-bold rounded-lg cursor-pointer transition-all uppercase"
                       >
                         Cancel
                       </button>
@@ -1300,12 +1300,12 @@ export default function App() {
 
                 {senderTransfer.status === "success" && (
                   <div className="flex flex-col items-center justify-center py-2 space-y-3 text-center">
-                    <div className="w-9 h-9 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
+                    <div className="w-9 h-9 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
                       <Check size={16} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-white">Transfer Completed!</h4>
-                      <p className="text-[9px] font-mono text-slate-450 mt-1 uppercase">File sent successfully to receiver</p>
+                      <h4 className="text-xs font-bold text-slate-900">Transfer Completed!</h4>
+                      <p className="text-[9px] font-mono text-slate-500 mt-1 uppercase">File sent successfully to receiver</p>
                     </div>
                     <button
                       onClick={() => setSenderTransfer(null)}
@@ -1318,16 +1318,16 @@ export default function App() {
 
                 {senderTransfer.status === "declined" && (
                   <div className="flex flex-col items-center justify-center py-2 space-y-3 text-center">
-                    <div className="w-9 h-9 bg-rose-500/10 text-rose-450 border border-rose-500/20 rounded-full flex items-center justify-center">
+                    <div className="w-9 h-9 bg-rose-500/10 text-rose-600 border border-rose-500/20 rounded-full flex items-center justify-center">
                       <X size={16} />
                     </div>
                     <div>
-                      <h4 className="text-xs font-bold text-white">Transfer Declined</h4>
-                      <p className="text-[9px] font-mono text-slate-450 mt-1 uppercase">The recipient declined your file.</p>
+                      <h4 className="text-xs font-bold text-slate-900">Transfer Declined</h4>
+                      <p className="text-[9px] font-mono text-slate-500 mt-1 uppercase">The recipient declined your file.</p>
                     </div>
                     <button
                       onClick={() => setSenderTransfer(null)}
-                      className="px-5 py-2 bg-slate-900 border border-brand-border hover:bg-slate-800 text-slate-350 font-mono text-[10px] font-bold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
+                      className="px-5 py-2 bg-slate-105 border border-slate-200 hover:bg-slate-100 text-slate-600 font-mono text-[10px] font-bold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
                     >
                       Dismiss
                     </button>
@@ -1383,8 +1383,8 @@ export default function App() {
               <AlertCircle size={20} />
             </div>
             <div className="space-y-1">
-              <h3 className="text-xs font-bold text-white uppercase tracking-wider">Locker link error</h3>
-              <p className="text-[11px] text-slate-450 leading-relaxed font-medium">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">Locker link error</h3>
+              <p className="text-[11px] text-slate-650 leading-relaxed font-medium">
                 {errorMsg || "The locker envelope requested has expired, is deleted, or does not exist."}
               </p>
             </div>
@@ -1393,7 +1393,7 @@ export default function App() {
                 window.location.hash = "";
                 setView("home");
               }}
-              className="px-5 py-2.5 bg-slate-900 border border-brand-border hover:bg-slate-800 text-slate-350 hover:text-white font-mono text-[10px] font-bold rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
+              className="px-5 py-2.5 bg-slate-100 border border-slate-200 hover:bg-slate-200 text-slate-700 font-mono text-[10px] font-bold rounded-lg transition-all cursor-pointer inline-flex items-center gap-1.5"
             >
               <ArrowLeft size={11} className="mr-1" />
               <span>RETURN</span>
@@ -1405,23 +1405,23 @@ export default function App() {
 
       {/* Recipient incoming modal offer card */}
       {receiverTransfer !== null && (
-        <div className="fixed inset-0 z-50 bg-slate-950/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
+        <div className="fixed inset-0 z-50 bg-slate-950/40 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200">
           <div className="glass-panel border-t-2 border-t-[#265c34] rounded-xl max-w-xs w-full p-5 shadow-2xl space-y-4">
             
             <div className="text-center space-y-1 select-none">
-              <span className="text-[8.5px] font-mono text-[#7bd18f] block uppercase font-black tracking-wider">Incoming File Offer</span>
-              <h3 className="text-xs font-bold text-white">
+              <span className="text-[8.5px] font-mono text-[#265c34] block uppercase font-black tracking-wider">Incoming File Offer</span>
+              <h3 className="text-xs font-bold text-slate-900">
                 {receiverTransfer.status === "offered" ? "Receive this file?" : "Receiving file..."}
               </h3>
             </div>
 
-            <div className="bg-slate-900/30 border border-brand-border p-3 rounded-lg flex items-center space-x-3">
-              <div className="w-8 h-8 bg-[#265c34]/15 text-[#7bd18f] border border-[#265c34]/20 rounded-lg flex items-center justify-center shrink-0">
+            <div className="bg-slate-50 border border-slate-200 p-3 rounded-lg flex items-center space-x-3">
+              <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] border border-[#265c34]/15 rounded-lg flex items-center justify-center shrink-0">
                 <FileText size={16} />
               </div>
               <div className="min-w-0 flex-1">
-                <p className="text-xs font-bold text-white truncate">{receiverTransfer.fileName}</p>
-                <p className="text-[9.5px] text-slate-450 mt-0.5 truncate leading-none">
+                <p className="text-xs font-bold text-slate-900 truncate">{receiverTransfer.fileName}</p>
+                <p className="text-[9.5px] text-slate-500 mt-0.5 truncate leading-none">
                   Size: {formatBytes(receiverTransfer.fileSize)} • From: {receiverTransfer.peerName}
                 </p>
               </div>
@@ -1438,7 +1438,7 @@ export default function App() {
                 </button>
                 <button
                   onClick={declineIncomingOffer}
-                  className="w-full py-2.5 bg-slate-900 hover:bg-slate-800 text-slate-400 hover:text-white border border-brand-border font-mono text-[10px] font-semibold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
+                  className="w-full py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-650 hover:text-slate-800 border border-slate-200 font-mono text-[10px] font-semibold tracking-wider rounded-lg cursor-pointer transition-all uppercase"
                 >
                   Decline
                 </button>
@@ -1447,11 +1447,11 @@ export default function App() {
 
             {receiverTransfer.status === "transferring" && (
               <div className="space-y-2.5 py-0.5">
-                <div className="flex justify-between items-center text-[9px] font-mono text-slate-400 select-none">
+                <div className="flex justify-between items-center text-[9px] font-mono text-slate-500 select-none">
                   <span>Receiving...</span>
-                  <span className="font-bold text-white">{receiverTransfer.percent}%</span>
+                  <span className="font-bold text-slate-900">{receiverTransfer.percent}%</span>
                 </div>
-                <div className="w-full bg-slate-900 h-1.5 rounded-full overflow-hidden border border-brand-border shadow-inner">
+                <div className="w-full bg-slate-200 h-1.5 rounded-full overflow-hidden border border-slate-300 shadow-inner">
                   <div 
                     className="bg-[#265c34] h-full rounded-full transition-all duration-100 glow-box" 
                     style={{ width: `${receiverTransfer.percent}%` }}
@@ -1462,12 +1462,12 @@ export default function App() {
 
             {receiverTransfer.status === "success" && (
               <div className="flex flex-col items-center justify-center py-2 space-y-3 text-center select-none">
-                <div className="w-9 h-9 bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
+                <div className="w-9 h-9 bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 rounded-full flex items-center justify-center glow-box">
                   <Check size={16} />
                 </div>
                 <div>
-                  <h4 className="text-xs font-bold text-white">Transfer Completed!</h4>
-                  <p className="text-[9px] font-mono text-slate-450 mt-1 uppercase">File downloaded to your local storage</p>
+                  <h4 className="text-xs font-bold text-slate-900">Transfer Completed!</h4>
+                  <p className="text-[9px] font-mono text-slate-500 mt-1 uppercase">File downloaded to your local storage</p>
                 </div>
                 <button
                   onClick={() => setReceiverTransfer(null)}

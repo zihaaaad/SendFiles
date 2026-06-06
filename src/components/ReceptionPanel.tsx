@@ -114,18 +114,18 @@ export default function ReceptionPanel({
     return (
       <div className="w-full max-w-md mx-auto glass-panel p-6 rounded-2xl shadow-xl space-y-5 animate-in zoom-in-95 duration-200">
         <div className="text-center space-y-1.5 select-none">
-          <div className="w-12 h-12 bg-[#265c34]/15 border border-[#265c34]/25 rounded-xl flex items-center justify-center text-[#7bd18f] mx-auto mb-3 shadow-inner glow-box">
+          <div className="w-12 h-12 bg-[#265c34]/10 border border-[#265c34]/20 rounded-xl flex items-center justify-center text-[#265c34] mx-auto mb-3 shadow-inner">
             <Lock size={20} />
           </div>
-          <h2 className="text-sm font-bold text-white tracking-tight">Passcode Required</h2>
-          <p className="text-[11px] text-slate-450 font-mono">
+          <h2 className="text-sm font-bold text-slate-800 tracking-tight">Passcode Required</h2>
+          <p className="text-[11px] text-slate-500 font-mono">
             Enter the PIN/Password to access and decrypt this secure locker.
           </p>
         </div>
 
         <form onSubmit={handleVerifyPassword} className="space-y-4">
           <div className="relative">
-            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-450">
+            <span className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-500">
               <Key size={14} />
             </span>
             <input
@@ -135,12 +135,12 @@ export default function ReceptionPanel({
               autoFocus
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full bg-slate-950/40 focus:bg-slate-950/60 text-xs text-white border border-brand-border focus:border-[#5eb075] focus:ring-1 focus:ring-[#5eb075]/10 rounded-xl pl-9 pr-4 py-2.5 outline-none transition-all placeholder:text-slate-500 font-mono"
+              className="w-full bg-slate-100 focus:bg-white text-xs text-slate-800 border border-brand-border/60 focus:border-[#265c34] focus:ring-1 focus:ring-[#265c34]/10 rounded-xl pl-9 pr-4 py-2.5 outline-none transition-all placeholder:text-slate-450 font-mono"
             />
           </div>
 
           {errorMsg && (
-            <div className="flex items-center space-x-2 text-rose-400 text-xs font-mono bg-rose-500/10 border border-rose-500/20 p-3 rounded-lg">
+            <div className="flex items-center space-x-2 text-rose-700 text-xs font-mono bg-rose-50 border border-rose-200 p-3 rounded-lg">
               <AlertCircle size={14} className="shrink-0" />
               <span>{errorMsg}</span>
             </div>
@@ -165,8 +165,8 @@ export default function ReceptionPanel({
           </button>
         </form>
 
-        <div className="flex items-center justify-center space-x-1.5 text-slate-450 text-center text-[9px] uppercase font-mono select-none font-bold">
-          <ShieldCheck size={12} className="text-emerald-400" />
+        <div className="flex items-center justify-center space-x-1.5 text-slate-500 text-center text-[9px] uppercase font-mono select-none font-bold">
+          <ShieldCheck size={12} className="text-[#265c34]" />
           <span>Zero-Knowledge AES Decryption</span>
         </div>
       </div>
@@ -181,28 +181,28 @@ export default function ReceptionPanel({
         <div className="space-y-1.5 min-w-0">
           <div className="flex items-center space-x-2 text-xs font-mono">
             {transferState === "transferring" && (
-              <span className="bg-[#265c34]/15 text-[#7bd18f] border border-[#265c34]/25 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold live-pulse">
+              <span className="bg-[#265c34]/10 text-[#265c34] border border-[#265c34]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold live-pulse">
                 ● Syncing
               </span>
             )}
             {transferState === "complete" && (
-              <span className="bg-emerald-500/10 text-emerald-400 border border-emerald-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold">
+              <span className="bg-emerald-100 text-emerald-800 border border-emerald-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold">
                 ✓ Compiled
               </span>
             )}
             {transferState === "connecting" && (
-              <span className="bg-amber-500/10 text-amber-400 border border-amber-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold animate-pulse">
+              <span className="bg-amber-100 text-amber-800 border border-amber-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold animate-pulse">
                 ● Connecting...
               </span>
             )}
             {transferState === "interrupted" && (
-              <span className="bg-rose-500/10 text-rose-450 border border-rose-500/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold">
+              <span className="bg-rose-100 text-rose-800 border border-rose-200 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-semibold">
                 ⚠ Offline
               </span>
             )}
-            <span className="text-slate-455">Locker ID: <strong className="text-white font-mono">{roomId}</strong></span>
+            <span className="text-slate-500">Locker ID: <strong className="text-slate-800 font-mono">{roomId}</strong></span>
           </div>
-          <h1 className="text-xs font-bold text-white tracking-tight leading-none pt-0.5 uppercase">
+          <h1 className="text-xs font-bold text-slate-800 tracking-tight leading-none pt-0.5 uppercase">
             Secure Locker Reception
           </h1>
         </div>
@@ -213,19 +213,19 @@ export default function ReceptionPanel({
             onClick={() => {
               window.location.hash = "";
             }}
-            className="text-[10px] bg-slate-900/40 hover:bg-slate-900/80 text-[#7bd18f] hover:text-white border border-brand-border hover:border-[#265c34]/30 px-3.5 py-2 rounded-lg font-mono font-bold tracking-wide transition-all cursor-pointer uppercase"
+            className="text-[10px] bg-[#265c34]/10 hover:bg-[#265c34] text-[#265c34] hover:text-white border border-[#265c34]/20 hover:border-[#265c34] px-3.5 py-2 rounded-lg font-mono font-bold tracking-wide transition-all cursor-pointer uppercase"
           >
             Send Files Back
           </button>
-          <span className="text-[10px] bg-slate-950/40 text-slate-400 font-mono px-3.5 py-2 rounded-lg border border-brand-border">
-            Files: <strong className="text-white">{roomDetails.files.length}</strong>
+          <span className="text-[10px] bg-[#265c34]/5 text-slate-600 font-mono px-3.5 py-2 rounded-lg border border-[#265c34]/15">
+            Files: <strong className="text-slate-800">{roomDetails.files.length}</strong>
           </span>
         </div>
       </div>
 
       {/* Payloads List */}
       <div className="glass-panel rounded-xl p-4.5 space-y-3 shadow-md">
-        <h2 className="text-xs font-mono text-[#7bd18f] flex items-center select-none tracking-wider uppercase font-bold">
+        <h2 className="text-xs font-mono text-[#265c34] flex items-center select-none tracking-wider uppercase font-bold">
           <FolderLock size={13} className="mr-2" /> Envelope Contents
         </h2>
 
@@ -240,19 +240,19 @@ export default function ReceptionPanel({
                 key={idx}
                 className={`border rounded-xl p-3.5 transition-all duration-150 ${
                   isActive
-                    ? "bg-[#265c34]/5 border-[#265c34]/40 shadow-sm"
+                    ? "bg-[#265c34]/5 border-[#265c34]/30 shadow-sm"
                     : isCompiled
-                    ? "bg-slate-950/20 border-slate-800"
-                    : "bg-slate-950/10 border-slate-900/40"
+                    ? "bg-[#265c34]/5 border-slate-200"
+                    : "bg-slate-50 border-slate-200/80"
                 }`}
               >
                 <div className="flex justify-between items-start">
                   <div className="min-w-0 pr-4 space-y-1">
-                    <p className={`text-xs font-bold truncate flex items-center ${isActive ? "text-[#7bd18f]" : "text-white"}`}>
-                      <FileText size={13} className="mr-1.5 shrink-0 text-slate-455" />
+                    <p className={`text-xs font-bold truncate flex items-center ${isActive ? "text-[#265c34]" : "text-slate-800"}`}>
+                      <FileText size={13} className="mr-1.5 shrink-0 text-slate-500" />
                       {file.name}
                     </p>
-                    <p className="text-[9.5px] text-slate-455 font-mono">
+                    <p className="text-[9.5px] text-slate-500 font-mono">
                       {formatBytes(file.size)} • {file.type || "binary"}
                     </p>
                   </div>
@@ -262,16 +262,16 @@ export default function ReceptionPanel({
                       <a
                         href={compiledObj.url}
                         download={compiledObj.name}
-                        className="flex items-center text-emerald-400 bg-emerald-500/10 border border-emerald-500/25 px-3 py-1.5 rounded-lg hover:bg-emerald-500 hover:text-white transition-all cursor-pointer font-bold shadow-sm"
+                        className="flex items-center text-emerald-800 bg-emerald-50 border border-emerald-250 px-3 py-1.5 rounded-lg hover:bg-emerald-600 hover:text-white transition-all cursor-pointer font-bold shadow-sm"
                       >
                         <Download size={11} className="mr-1" /> SAVE FILE
                       </a>
                     ) : isActive ? (
-                      <span className="text-[#7bd18f] animate-pulse font-bold uppercase tracking-wider block pt-1 text-[9.5px]">
+                      <span className="text-[#265c34] animate-pulse font-bold uppercase tracking-wider block pt-1 text-[9.5px]">
                         DOWNLOADING...
                       </span>
                     ) : (
-                      <span className="text-slate-500 uppercase tracking-wider font-bold block pt-1 text-[9px]">
+                      <span className="text-slate-450 uppercase tracking-wider font-bold block pt-1 text-[9px]">
                         QUEUED
                       </span>
                     )}
@@ -281,14 +281,14 @@ export default function ReceptionPanel({
                 {/* Progress bar */}
                 {isActive && progress && (
                   <div className="mt-3 space-y-1.5">
-                    <div className="flex justify-between items-center text-[9px] font-mono text-slate-450">
+                    <div className="flex justify-between items-center text-[9px] font-mono text-slate-500">
                       <span className="flex items-center">
-                        Speed: <strong className="text-slate-300 ml-1 font-bold">{formatSpeed(progress.speed)}</strong>
+                        Speed: <strong className="text-slate-700 ml-1 font-bold">{formatSpeed(progress.speed)}</strong>
                       </span>
-                      <span className="font-bold text-white">{progress.percent}%</span>
+                      <span className="font-bold text-slate-800">{progress.percent}%</span>
                     </div>
 
-                    <div className="w-full h-1 bg-slate-900 rounded-full overflow-hidden border border-brand-border">
+                    <div className="w-full h-1 bg-slate-200 rounded-full overflow-hidden border border-brand-border">
                       <div
                         className="bg-[#265c34] h-1 rounded-full transition-all duration-100"
                         style={{ width: `${progress.percent}%` }}
@@ -309,17 +309,16 @@ export default function ReceptionPanel({
 
       {/* Info panel */}
       <div className="glass-panel rounded-xl p-4.5 flex items-start space-x-3 shadow-md">
-        <div className="w-8 h-8 rounded-lg bg-[#265c34]/15 border border-[#265c34]/25 flex items-center justify-center text-[#7bd18f] shrink-0">
+        <div className="w-8 h-8 rounded-lg bg-[#265c34]/10 border border-[#265c34]/20 flex items-center justify-center text-[#265c34] shrink-0">
           <HeartHandshake size={15} />
         </div>
         <div className="space-y-0.5 select-none min-w-0">
-          <h3 className="text-[10px] font-bold font-mono uppercase tracking-wider text-slate-350">Direct Peer-to-Peer</h3>
-          <p className="text-[10.5px] text-slate-455 leading-relaxed">
+          <h3 className="text-[10px] font-bold font-mono uppercase tracking-wider text-slate-600">Direct Peer-to-Peer</h3>
+          <p className="text-[10.5px] text-slate-600 leading-relaxed">
             Files are decrypted in your browser and sent directly from the sender. They are never saved or stored on any server.
           </p>
         </div>
       </div>
-
     </div>
   );
 }

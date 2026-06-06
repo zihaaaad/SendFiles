@@ -96,21 +96,21 @@ export default function LockerDashboard({
       <div className="glass-panel rounded-xl p-4.5 shadow-md flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1 select-none min-w-0">
           <div className="flex items-center space-x-2.5">
-            <span className="text-[9px] font-mono bg-[#265c34]/15 text-[#7bd18f] border border-[#265c34]/25 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-bold live-pulse">
+            <span className="text-[9px] font-mono bg-[#265c34]/10 text-[#265c34] border border-[#265c34]/20 px-2.5 py-0.5 rounded-full uppercase tracking-wider font-bold live-pulse">
               ● Active
             </span>
-            <span className="text-[10px] font-mono text-slate-400 truncate">
-              Room ID: <strong className="text-[#7bd18f] font-mono select-all">{roomId}</strong>
+            <span className="text-[10px] font-mono text-slate-600 truncate">
+              Room ID: <strong className="text-[#265c34] font-mono select-all">{roomId}</strong>
             </span>
           </div>
-          <h1 className="text-xs font-bold text-white tracking-tight leading-none pt-0.5 uppercase">
+          <h1 className="text-xs font-bold text-slate-800 tracking-tight leading-none pt-0.5 uppercase">
             P2P Stream Active
           </h1>
         </div>
 
         <button
           onClick={onShutdown}
-          className="w-full sm:w-auto px-4 py-2 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-400 hover:text-rose-350 font-mono text-[10px] font-bold tracking-wider transition-all cursor-pointer text-center uppercase"
+          className="w-full sm:w-auto px-4 py-2 rounded-lg border border-rose-500/20 bg-rose-500/10 hover:bg-rose-500/20 text-rose-600 hover:text-rose-700 font-mono text-[10px] font-bold tracking-wider transition-all cursor-pointer text-center uppercase"
         >
           Close Locker
         </button>
@@ -119,26 +119,26 @@ export default function LockerDashboard({
       {/* Share Link Widget */}
       <div className="glass-panel rounded-xl p-4.5 space-y-4 shadow-md">
         <div className="select-none">
-          <h2 className="text-xs font-mono text-[#7bd18f] flex items-center tracking-wider font-bold uppercase">
-            <Share2 size={13} className="mr-2 text-[#7bd18f] live-pulse" /> Locker Link
+          <h2 className="text-xs font-mono text-[#265c34] flex items-center tracking-wider font-bold uppercase">
+            <Share2 size={13} className="mr-2 text-[#265c34] live-pulse" /> Locker Link
           </h2>
-          <p className="text-[11px] text-slate-450 mt-1 leading-relaxed">
+          <p className="text-[11px] text-slate-655 mt-1 leading-relaxed">
             The encryption key is embedded in the link and stays private in your browser.
           </p>
         </div>
 
-        <div className="flex items-center space-x-2 bg-slate-950/40 border border-brand-border rounded-xl p-2 min-w-0">
+        <div className="flex items-center space-x-2 bg-slate-100 border border-brand-border rounded-xl p-2 min-w-0">
           <input
             type="text"
             readOnly
             value={shareUrl}
-            className="flex-1 bg-transparent border-none text-[11px] text-slate-300 font-mono px-2 py-1 outline-none select-all truncate selection:bg-[#265c34]/40"
+            className="flex-1 bg-transparent border-none text-[11px] text-slate-700 font-mono px-2 py-1 outline-none select-all truncate selection:bg-[#265c34]/20"
           />
           <button
             onClick={copyShareLink}
             className={`px-3 py-1.5 rounded-lg font-mono text-[9px] font-bold cursor-pointer tracking-widest flex items-center space-x-1.5 shrink-0 transition-all ${
               copied
-                ? "bg-emerald-500/15 text-emerald-400 border border-emerald-500/25"
+                ? "bg-emerald-100 text-emerald-800 border border-emerald-250"
                 : "bg-[#265c34] hover:bg-[#347442] text-white"
             }`}
           >
@@ -148,8 +148,8 @@ export default function LockerDashboard({
         </div>
 
         {/* QR Code */}
-        <div className="flex flex-col sm:flex-row items-center gap-4 bg-slate-950/20 border border-brand-border rounded-xl p-3.5">
-          <div className="bg-white p-1 rounded-lg shrink-0">
+        <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#265c34]/5 border border-brand-border/60 rounded-xl p-3.5">
+          <div className="bg-white p-1 rounded-lg shrink-0 border border-slate-200 shadow-sm">
             <img 
               src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(shareUrl)}`} 
               alt="Locker QR Code" 
@@ -157,8 +157,8 @@ export default function LockerDashboard({
             />
           </div>
           <div className="space-y-1 text-center sm:text-left select-none">
-            <h4 className="text-[11px] font-bold text-white uppercase tracking-wider">Scan with phone camera</h4>
-            <p className="text-[10.5px] text-slate-450 leading-normal font-medium">
+            <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">Scan with phone camera</h4>
+            <p className="text-[10.5px] text-slate-600 leading-normal font-medium">
               Scan this code from another phone's camera to connect and download immediately.
             </p>
           </div>
@@ -166,29 +166,29 @@ export default function LockerDashboard({
 
         {/* Quick Lock Details */}
         <div className="grid grid-cols-3 gap-2.5 pt-1 select-none">
-          <div className="bg-slate-900/20 rounded-xl border border-brand-border p-2.5 text-center">
-            <div className="text-[8px] font-mono text-slate-455 uppercase tracking-widest font-bold">Time Left</div>
-            <div className="text-[10px] font-mono text-slate-300 mt-1 font-bold flex items-center justify-center">
-              <Clock size={11} className="mr-1 text-[#7bd18f]" />
+          <div className="bg-slate-50 rounded-xl border border-brand-border/60 p-2.5 text-center">
+            <div className="text-[8px] font-mono text-slate-500 uppercase tracking-widest font-bold">Time Left</div>
+            <div className="text-[10px] font-mono text-slate-800 mt-1 font-bold flex items-center justify-center">
+              <Clock size={11} className="mr-1 text-[#265c34]" />
               {timeLeft}
             </div>
           </div>
-          <div className="bg-slate-900/20 rounded-xl border border-brand-border p-2.5 text-center">
-            <div className="text-[8px] font-mono text-slate-455 uppercase tracking-widest font-bold">Downloads</div>
-            <div className="text-[10px] font-mono text-slate-300 mt-1 font-bold">
+          <div className="bg-slate-50 rounded-xl border border-brand-border/60 p-2.5 text-center">
+            <div className="text-[8px] font-mono text-slate-500 uppercase tracking-widest font-bold">Downloads</div>
+            <div className="text-[10px] font-mono text-slate-800 mt-1 font-bold">
               {downloadCount} / {maxDownloads === 100 ? "∞" : maxDownloads}
             </div>
           </div>
-          <div className="bg-slate-900/20 rounded-xl border border-brand-border p-2.5 text-center">
-            <div className="text-[8px] font-mono text-slate-455 uppercase tracking-widest font-bold">Security</div>
-            <div className="text-[10px] font-mono text-slate-300 mt-1 font-bold truncate px-1 flex items-center justify-center gap-1">
+          <div className="bg-slate-50 rounded-xl border border-brand-border/60 p-2.5 text-center">
+            <div className="text-[8px] font-mono text-slate-500 uppercase tracking-widest font-bold">Security</div>
+            <div className="text-[10px] font-mono text-slate-800 mt-1 font-bold truncate px-1 flex items-center justify-center gap-1">
               {rawPassword ? (
                 <>
-                  <Lock size={10} className="text-[#7bd18f]" /> PIN Lock
+                  <Lock size={10} className="text-[#265c34]" /> PIN Lock
                 </>
               ) : (
                 <>
-                  <Unlock size={10} className="text-slate-500" /> Hash Key
+                  <Unlock size={10} className="text-slate-400" /> Hash Key
                 </>
               )}
             </div>
@@ -198,18 +198,18 @@ export default function LockerDashboard({
 
       {/* Active Discovered Peers & Progress */}
       <div className="glass-panel rounded-xl p-4.5 space-y-3.5 shadow-md">
-        <h2 className="text-xs font-mono text-[#7bd18f] flex items-center select-none tracking-wider font-bold uppercase">
+        <h2 className="text-xs font-mono text-[#265c34] flex items-center select-none tracking-wider font-bold uppercase">
           <UserCheck size={13} className="mr-2" /> Connected Devices ({activePeers.size})
         </h2>
 
         {activePeers.size === 0 ? (
-          <div className="flex flex-col items-center justify-center text-slate-450 text-center py-6 select-none">
-            <RefreshCw size={18} className="animate-spin text-[#265c34]/50 mb-2" />
-            <p className="text-[9px] font-bold uppercase font-mono tracking-widest text-[#7bd18f]/80">Waiting for receiver...</p>
+          <div className="flex flex-col items-center justify-center text-slate-500 text-center py-6 select-none">
+            <RefreshCw size={18} className="animate-spin text-[#265c34]/30 mb-2" />
+            <p className="text-[9px] font-bold uppercase font-mono tracking-widest text-[#265c34]">Waiting for receiver...</p>
             <p className="text-[8.5px] font-mono text-slate-500 mt-0.5 leading-normal">Keep this page open. Keep your device online.</p>
           </div>
         ) : (
-          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-800">
+          <div className="space-y-2 max-h-[220px] overflow-y-auto pr-1 scrollbar-thin scrollbar-thumb-slate-200">
             {Array.from(activePeers.entries()).map(([peerId, status]) => {
               const progress = peerProgressList.get(peerId);
               const pct = progress ? progress.percent : 0;
@@ -217,16 +217,16 @@ export default function LockerDashboard({
               return (
                 <div
                   key={peerId}
-                  className="bg-slate-900/30 border border-brand-border rounded-xl p-3 space-y-2"
+                  className="bg-[#265c34]/5 border border-[#265c34]/15 rounded-xl p-3 space-y-2"
                 >
                   <div className="flex justify-between items-center text-[10px] font-mono select-none">
-                    <span className="text-slate-350 font-bold">
+                    <span className="text-slate-700 font-bold">
                       Receiver {peerId.substring(9, 13)}
                     </span>
                     <span className={`text-[8px] tracking-wider font-bold px-1.5 py-0.5 rounded border uppercase ${
                       status === "connected"
-                        ? "bg-[#265c34]/10 border-[#265c34]/25 text-[#7bd18f] glow-box"
-                        : "bg-amber-500/10 border-amber-500/25 text-amber-400"
+                        ? "bg-[#265c34]/10 border-[#265c34]/20 text-[#265c34] glow-box"
+                        : "bg-amber-100 border-amber-250 text-amber-800"
                     }`}>
                       {status}
                     </span>
@@ -234,12 +234,12 @@ export default function LockerDashboard({
 
                   {progress && progress.status === "transferring" && (
                     <div className="space-y-1.5 font-mono text-[9.5px]">
-                      <div className="flex justify-between text-slate-400">
+                      <div className="flex justify-between text-slate-600">
                         <span className="truncate pr-4 font-sans text-[10.5px]">{progress.fileName}</span>
-                        <span className="text-white font-bold">{pct}%</span>
+                        <span className="text-slate-800 font-bold">{pct}%</span>
                       </div>
                       
-                      <div className="w-full bg-slate-950 rounded-full h-1 overflow-hidden border border-brand-border">
+                      <div className="w-full bg-slate-200 rounded-full h-1 overflow-hidden border border-brand-border">
                         <div 
                           className="bg-[#265c34] h-1 rounded-full transition-all duration-300"
                           style={{ width: `${pct}%` }}
@@ -254,7 +254,7 @@ export default function LockerDashboard({
                   )}
 
                   {status === "closed" && (
-                    <p className="text-[9px] text-[#7bd18f] font-mono text-right flex items-center justify-end font-bold uppercase">
+                    <p className="text-[9px] text-[#265c34] font-mono text-right flex items-center justify-end font-bold uppercase">
                       <FileCheck2 size={11} className="mr-1" /> Transfer Complete
                     </p>
                   )}
