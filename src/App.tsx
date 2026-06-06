@@ -118,6 +118,16 @@ export default function App() {
     fetchNetworkIps();
   }, []);
 
+  // Derived helper to resolve localhost/127.0.0.1 origins to the server's local network IPv4 address
+  const resolvedOrigin = (() => {
+    const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+    if (isLocal && networkIps.length > 0) {
+      const portPart = window.location.port ? `:${window.location.port}` : "";
+      return `${window.location.protocol}//${networkIps[0]}${portPart}`;
+    }
+    return window.location.origin;
+  })();
+
   // Direct Beam Sender State
   const [senderTransfer, setSenderTransfer] = useState<{
     peerId: string;
@@ -857,7 +867,7 @@ export default function App() {
       const sender = new P2PSender(roomInfo.roomId, files, cryptoKey);
       p2pSenderRef.current = sender;
       
-      const shareUrl = `${window.location.origin}/#/locker/${roomInfo.roomId}#key=${keyHex}`;
+      const shareUrl = `${resolvedOrigin}/#/locker/${roomInfo.roomId}#key=${keyHex}`;
       setCreatedLockerData({
         roomId: roomInfo.roomId,
         expiresAt: roomInfo.expiresAt,
@@ -940,7 +950,7 @@ export default function App() {
   };
 
   const handleCopyAppUrl = () => {
-    navigator.clipboard.writeText(window.location.origin);
+    navigator.clipboard.writeText(resolvedOrigin);
     setCopiedLink(true);
     setTimeout(() => setCopiedLink(false), 2000);
   };
@@ -948,9 +958,7 @@ export default function App() {
   const localPeers = peers.filter(p => p.ip === myPublicIp);
   const globalPeers = peers.filter(p => p.ip !== myPublicIp);
 
-  const qrUrl = window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1"
-    ? window.location.origin
-    : (networkIps.length > 0 ? `${window.location.protocol}//${networkIps[0]}:${window.location.port}` : window.location.origin);
+  const qrUrl = resolvedOrigin;
 
   // ----------------------------------------------------
   // Main Layout Render
