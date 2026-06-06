@@ -31,7 +31,17 @@ jobs:
           npm install
 
       - name: Compile Frontend and Backend
-        run: npm run build
+        run: |
+          npm run build > build.log 2>&1
+
+      - name: Commit and push build log on failure
+        if: failure()
+        run: |
+          git config --global user.name "GitHub Actions"
+          git config --global user.email "actions@github.com"
+          git add build.log
+          git commit -m "ci: capture build failure logs [skip ci]" || true
+          git push -f origin HEAD:build-logs
 
       - name: Build Standalone Binaries (pkg)
         run: |
