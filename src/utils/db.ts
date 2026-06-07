@@ -119,3 +119,14 @@ export async function clearRoomFromDB(roomId: string): Promise<void> {
     req.onerror = () => reject(req.error);
   });
 }
+
+export async function clearAllChunksFromDB(): Promise<void> {
+  const db = await getDB();
+  return new Promise<void>((resolve, reject) => {
+    const tx = db.transaction(CHUNK_STORE, "readwrite");
+    const store = tx.objectStore(CHUNK_STORE);
+    const req = store.clear();
+    req.onsuccess = () => resolve();
+    req.onerror = () => reject(req.error);
+  });
+}

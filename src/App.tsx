@@ -31,6 +31,7 @@ import { generateSecretKey, exportKeyToHex } from "./utils/crypto";
 import { P2PSender, P2PReceiver, decodeBinaryChunk } from "./utils/p2p-engine";
 import { RoomDetails, TransferProgress } from "./types";
 import QRCode from "qrcode";
+import { clearAllChunksFromDB } from "./utils/db";
 
 // Import simplified subcomponents
 import CreateLocker from "./components/CreateLocker";
@@ -125,6 +126,11 @@ export default function App() {
     };
     fetchNetworkIps();
     fetchIceConfig(); // Fetch dynamic STUN/TURN servers
+    
+    // Purge any stale IndexedDB transfer fragments from aborted sessions at startup
+    clearAllChunksFromDB().catch((err) => 
+      console.error("Failed to clear IndexedDB cache at startup:", err)
+    );
   }, []);
 
   // Derived helper to resolve localhost/127.0.0.1 origins to the server's local network IPv4 address

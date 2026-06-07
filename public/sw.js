@@ -80,11 +80,14 @@ self.addEventListener("fetch", (event) => {
       }
     });
 
+    const safeAsciiName = fileName.replace(/[^a-zA-Z0-9.-]/g, "_");
+    const contentDisposition = `attachment; filename="${safeAsciiName}"; filename*=UTF-8''${encodeURIComponent(fileName)}`;
+
     event.respondWith(
       new Response(stream, {
         headers: {
           "Content-Type": "application/octet-stream",
-          "Content-Disposition": `attachment; filename="${encodeURIComponent(fileName)}"`,
+          "Content-Disposition": contentDisposition,
           "Content-Length": fileSize.toString(),
           "Cache-Control": "no-cache, no-store, must-revalidate",
           "X-Content-Type-Options": "nosniff",

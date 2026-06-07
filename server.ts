@@ -82,6 +82,7 @@ const apiLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many requests from this IP, please try again later." },
   keyGenerator: (req) => getClientIp(req),
+  skip: (req) => isLocalIp(getClientIp(req)),
 });
 
 const createRoomLimiter = rateLimit({
@@ -91,6 +92,7 @@ const createRoomLimiter = rateLimit({
   legacyHeaders: false,
   message: { error: "Too many lockers created from this IP, please try again later." },
   keyGenerator: (req) => getClientIp(req),
+  skip: (req) => isLocalIp(getClientIp(req)),
 });
 
 // Apply rate limiting
