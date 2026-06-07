@@ -1117,6 +1117,38 @@
     // Initialize Lucide Icons
     lucide.createIcons();
 
+    // Fetch latest release and dynamically update download links
+    async function updateReleaseVersion() {
+      try {
+        const res = await fetch("https://api.github.com/repos/zihaaaad/SendFiles/releases/latest");
+        if (res.ok) {
+          const data = await res.json();
+          const latestTag = data.tag_name;
+          if (latestTag) {
+            // Update version badge
+            const badge = document.querySelector(".hero-badge");
+            if (badge) {
+              badge.innerHTML = `<span></span> ${latestTag} Stable Release`;
+            }
+            
+            // Update all download URLs containing '/releases/download/v1.0.0/' or similar
+            const downloadLinks = document.querySelectorAll("a[href*='/releases/download/']");
+            downloadLinks.forEach(link => {
+              const currentHref = link.getAttribute("href");
+              if (currentHref) {
+                // Replace any version tag (e.g. /releases/download/v1.0.0/...) with the latest tag
+                const updatedHref = currentHref.replace(/\/releases\/download\/[^/]+/, `/releases/download/${latestTag}`);
+                link.setAttribute("href", updatedHref);
+              }
+            });
+          }
+        }
+      } catch (e) {
+        console.error("Failed to fetch latest release from GitHub:", e);
+      }
+    }
+    updateReleaseVersion();
+
     // Navbar scroll effect
     window.addEventListener('scroll', () => {
       const navbar = document.getElementById('navbar');
