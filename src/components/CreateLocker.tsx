@@ -27,6 +27,7 @@ interface CreateLockerProps {
     maxDownloads: number;
     expiresInMins: number;
     passwordHash: string | null;
+    passwordSalt?: string;
     rawPassword?: string;
   }) => void;
   isCreating: boolean;
@@ -84,8 +85,11 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
     if (files.length === 0) return;
 
     let pHash: string | null = null;
+    let pSalt: string | null = null;
     if (usePassword && password) {
-      pHash = await hashPassword(password);
+      const result = await hashPassword(password);
+      pHash = result.hash;
+      pSalt = result.salt;
     }
 
     onLockerCreated({
@@ -93,6 +97,7 @@ export default function CreateLocker({ onLockerCreated, isCreating }: CreateLock
       maxDownloads,
       expiresInMins,
       passwordHash: pHash,
+      passwordSalt: pSalt || undefined,
       rawPassword: usePassword ? password : undefined,
     });
   };

@@ -13,6 +13,8 @@ import dotenv from "dotenv";
 import os from "os";
 import { exec } from "child_process";
 import selfsigned from "selfsigned";
+import rateLimit from "express-rate-limit";
+import { createClient } from "redis";
 
 dotenv.config();
 
@@ -54,6 +56,45 @@ function ipsMatchForDiscovery(ipA: string, ipB: string): boolean {
 }
 
 const app = express();
+
+// Enable proxy trust to get client IP via req.ip when deployed behind reverse proxies
+app.set("trust proxy", process.env.TRUST_PROXY === "true" || process.env.TRUST_PROXY === "1" || true);
+
+// Secure helper to resolve client IP and prevent spoofing
+function getClientIp(req: any): string {
+  const trustProxy = app.get("trust proxy") === true;
+  if (trustProxy && req.headers["x-forwarded-for"]) {
+    const forwarded = req.headers["x-forwarded-for"];
+    if (typeof forwarded === "string") {
+      return forwarded.split(",")[0].trim();
+    } else if (Array.isArray(forwarded)) {
+      return forwarded[0].trim();
+    }
+  }
+  return req.socket.remoteAddress || "127.0.0.1";
+}
+
+// Rate limiters
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 100, // Limit each IP to 100 requests per window
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many requests from this IP, please try again later." },
+  keyGenerator: (req) => getClientIp(req),
+});
+
+const createRoomLimiter = rateLimit({
+  windowMs: 60 * 60 * 1000, // 1 hour
+  max: 15, // Limit each IP to 15 room creations per hour
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "Too many lockers created from this IP, please try again later." },
+  keyGenerator: (req) => getClientIp(req),
+});
+
+// Apply rate limiting
+app.use("/api/", apiLimiter);
 
 const PORT = parseInt(process.env.PORT || "3000", 10);
 const HTTPS_PORT = parseInt(process.env.HTTPS_PORT || "3001", 10);
@@ -97,14 +138,38 @@ const httpsServer = https.createServer(sslCert, app);
 
 app.use(express.json());
 
+// Redis Integration
+let redisClient: any = null;
+let redisPub: any = null;
+let redisSub: any = null;
+const REDIS_URL = process.env.REDIS_URL;
+
+async function initRedis() {
+  if (REDIS_URL) {
+    try {
+      redisClient = createClient({ url: REDIS_URL });
+      redisPub = createClient({ url: REDIS_URL });
+      redisSub = createClient({ url: REDIS_URL });
+      
+      await redisClient.connect();
+      await redisPub.connect();
+      await redisSub.connect();
+      
+      setupRedisPubSub();
+      console.log("[Redis Cluster] Connected to Redis for state replication & Pub/Sub signaling.");
+    } catch (err) {
+      console.error("[Redis Cluster] Redis initialization failed. Falling back to local Map storage:", err);
+      redisClient = null;
+      redisPub = null;
+      redisSub = null;
+    }
+  }
+}
+
 // Fetch Public IP
 app.get("/api/ip", (req, res) => {
   res.setHeader("Access-Control-Allow-Origin", "*");
-  const forwarded = req.headers["x-forwarded-for"];
-  const publicIp = typeof forwarded === "string"
-    ? forwarded.split(",")[0].trim()
-    : req.socket.remoteAddress || "127.0.0.1";
-  res.json({ ip: publicIp });
+  res.json({ ip: getClientIp(req) });
 });
 
 // Fetch local network IPs of the server
@@ -124,6 +189,31 @@ app.get("/api/network-ips", (req, res) => {
   res.json({ ips });
 });
 
+// Ice Traversal Configuration Endpoint
+app.get("/api/ice-config", (req, res) => {
+  const iceServers: any[] = [
+    { urls: "stun:stun.l.google.com:19302" },
+    { urls: "stun:stun1.l.google.com:19302" },
+    { urls: "stun:stun2.l.google.com:19302" },
+    { urls: "stun:stun3.l.google.com:19302" },
+    { urls: "stun:stun4.l.google.com:19302" }
+  ];
+
+  if (process.env.TURN_SERVER_URL) {
+    iceServers.push({
+      urls: process.env.TURN_SERVER_URL,
+      username: process.env.TURN_SERVER_USERNAME,
+      credential: process.env.TURN_SERVER_CREDENTIAL
+    });
+  }
+  if (process.env.STUN_SERVER_URL) {
+    iceServers.push({
+      urls: process.env.STUN_SERVER_URL
+    });
+  }
+  res.json({ iceServers });
+});
+
 // File Metadata interfaces
 interface FileMetadata {
   name: string;
@@ -139,38 +229,113 @@ interface Room {
   maxDownloads: number;
   downloadCount: number;
   passwordHash: string | null;
+  passwordSalt: string | null;
   senderPeerId: string | null;
   receiverPeerIds: Set<string>;
   creatorIp: string;
 }
 
-// In-Memory Room Registry
+// In-Memory Room Registry fallback
 const rooms = new Map<string, Room>();
+
+// Serialization utilities for Redis
+function serializeRoom(room: Room): string {
+  return JSON.stringify({
+    ...room,
+    receiverPeerIds: Array.from(room.receiverPeerIds)
+  });
+}
+
+function deserializeRoom(json: string): Room {
+  const data = JSON.parse(json);
+  return {
+    ...data,
+    receiverPeerIds: new Set(data.receiverPeerIds)
+  };
+}
+
+async function saveRoom(room: Room): Promise<void> {
+  if (redisClient) {
+    const key = `sendfiles:room:${room.id}`;
+    const ttl = Math.max(0, room.expiresAt - Date.now());
+    await redisClient.set(key, serializeRoom(room), { PX: ttl });
+    await redisClient.sAdd("sendfiles:active_rooms", room.id);
+  } else {
+    rooms.set(room.id, room);
+  }
+}
+
+async function getRoom(roomId: string): Promise<Room | null> {
+  if (redisClient) {
+    const key = `sendfiles:room:${roomId}`;
+    const json = await redisClient.get(key);
+    if (!json) {
+      await redisClient.sRem("sendfiles:active_rooms", roomId);
+      return null;
+    }
+    return deserializeRoom(json);
+  } else {
+    return rooms.get(roomId) || null;
+  }
+}
+
+async function deleteRoom(roomId: string): Promise<void> {
+  if (redisClient) {
+    await redisClient.del(`sendfiles:room:${roomId}`);
+    await redisClient.sRem("sendfiles:active_rooms", roomId);
+  } else {
+    rooms.delete(roomId);
+  }
+}
+
+async function getAllActiveRooms(clientIp: string): Promise<Room[]> {
+  const activeRoomsList: Room[] = [];
+  const now = Date.now();
+
+  if (redisClient) {
+    const roomIds = await redisClient.sMembers("sendfiles:active_rooms");
+    for (const rId of roomIds) {
+      const room = await getRoom(rId);
+      if (room) {
+        if (room.expiresAt > now && ipsMatchForDiscovery(room.creatorIp, clientIp) && room.downloadCount < room.maxDownloads) {
+          activeRoomsList.push(room);
+        }
+      } else {
+        await redisClient.sRem("sendfiles:active_rooms", rId);
+      }
+    }
+  } else {
+    for (const room of rooms.values()) {
+      if (room.expiresAt > now && ipsMatchForDiscovery(room.creatorIp, clientIp) && room.downloadCount < room.maxDownloads) {
+        activeRoomsList.push(room);
+      }
+    }
+  }
+  return activeRoomsList;
+}
 
 // ----------------------------------------------------
 // Express Rest API Endpoints for Lockers
 // ----------------------------------------------------
 
 // 1. Create a secure locker
-app.post("/api/rooms", (req, res) => {
+app.post("/api/rooms", createRoomLimiter, async (req, res) => {
   try {
-    const { files, maxDownloads, expiresInMins, passwordHash } = req.body;
+    const { files, maxDownloads, expiresInMins, passwordHash, passwordSalt } = req.body;
 
     if (!files || !Array.isArray(files) || files.length === 0) {
       return res.status(400).json({ error: "Files array is required" });
     }
 
-    // Generate unique, readable 6-character uppercase Room ID
+    // Generate unique Room ID
     let roomId = "";
+    let roomExists = false;
     do {
       roomId = Math.random().toString(36).substring(2, 8).toUpperCase();
-    } while (rooms.has(roomId));
+      roomExists = redisClient ? (await redisClient.exists(`sendfiles:room:${roomId}`)) > 0 : rooms.has(roomId);
+    } while (roomExists);
 
-    // Get creator public IP for local network discovery
-    const forwarded = req.headers["x-forwarded-for"];
-    const creatorIp = typeof forwarded === "string"
-      ? forwarded.split(",")[0].trim()
-      : req.socket.remoteAddress || "127.0.0.1";
+    const creatorIp = getClientIp(req);
 
     const newRoom: Room = {
       id: roomId,
@@ -183,12 +348,13 @@ app.post("/api/rooms", (req, res) => {
       maxDownloads: Number(maxDownloads) || 1,
       downloadCount: 0,
       passwordHash: passwordHash || null,
+      passwordSalt: passwordSalt || null,
       senderPeerId: null,
       receiverPeerIds: new Set<string>(),
       creatorIp
     };
 
-    rooms.set(roomId, newRoom);
+    await saveRoom(newRoom);
     console.log(`[Locker Hub] Created Locker ${roomId} | Files: ${newRoom.files.length} | IP: ${creatorIp}`);
 
     res.status(201).json({
@@ -197,77 +363,82 @@ app.post("/api/rooms", (req, res) => {
       maxDownloads: newRoom.maxDownloads,
       downloadCount: newRoom.downloadCount,
       hasPassword: newRoom.passwordHash !== null,
+      passwordSalt: newRoom.passwordSalt || undefined,
       files: newRoom.files
     });
-  } catch (err: any) {
+  } catch (err) {
     console.error("Error creating locker:", err);
     res.status(500).json({ error: "Failed to create secure locker" });
   }
 });
 
 // 2. Scan active lockers (Discovery Hub matching local IP)
-app.get("/api/rooms", (req, res) => {
-  const forwarded = req.headers["x-forwarded-for"];
-  const clientIp = typeof forwarded === "string"
-    ? forwarded.split(",")[0].trim()
-    : req.socket.remoteAddress || "127.0.0.1";
+app.get("/api/rooms", async (req, res) => {
+  try {
+    const clientIp = getClientIp(req);
+    const activeRooms = await getAllActiveRooms(clientIp);
 
-  const activeRooms: any[] = [];
-  const now = Date.now();
-
-  for (const room of rooms.values()) {
-    if (room.expiresAt > now && ipsMatchForDiscovery(room.creatorIp, clientIp) && room.downloadCount < room.maxDownloads) {
-      activeRooms.push({
-        roomId: room.id,
-        expiresAt: room.expiresAt,
-        maxDownloads: room.maxDownloads,
-        downloadCount: room.downloadCount,
-        hasPassword: room.passwordHash !== null,
-        files: room.files
-      });
-    }
+    res.json(activeRooms.map(room => ({
+      roomId: room.id,
+      expiresAt: room.expiresAt,
+      maxDownloads: room.maxDownloads,
+      downloadCount: room.downloadCount,
+      hasPassword: room.passwordHash !== null,
+      passwordSalt: room.passwordSalt || undefined,
+      files: room.files
+    })));
+  } catch (err) {
+    console.error("Scan error:", err);
+    res.status(500).json({ error: "Failed to list active rooms" });
   }
-
-  res.json(activeRooms);
 });
 
 // 3. Get specific locker details
-app.get("/api/rooms/:roomId", (req, res) => {
-  const { roomId } = req.params;
-  const room = rooms.get(roomId);
+app.get("/api/rooms/:roomId", async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const room = await getRoom(roomId);
 
-  if (!room || room.expiresAt <= Date.now()) {
-    return res.status(404).json({ error: "Locker not found or has expired" });
+    if (!room || room.expiresAt <= Date.now()) {
+      return res.status(404).json({ error: "Locker not found or has expired" });
+    }
+
+    if (room.downloadCount >= room.maxDownloads) {
+      return res.status(410).json({ error: "Locker download limit has been reached" });
+    }
+
+    res.json({
+      roomId: room.id,
+      expiresAt: room.expiresAt,
+      maxDownloads: room.maxDownloads,
+      downloadCount: room.downloadCount,
+      hasPassword: room.passwordHash !== null,
+      passwordSalt: room.passwordSalt || undefined,
+      files: room.files
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Server lookup error" });
   }
-
-  if (room.downloadCount >= room.maxDownloads) {
-    return res.status(410).json({ error: "Locker download limit has been reached" });
-  }
-
-  res.json({
-    roomId: room.id,
-    expiresAt: room.expiresAt,
-    maxDownloads: room.maxDownloads,
-    downloadCount: room.downloadCount,
-    hasPassword: room.passwordHash !== null,
-    files: room.files
-  });
 });
 
 // 4. Verify password PIN
-app.post("/api/rooms/:roomId/verify-password", (req, res) => {
-  const { roomId } = req.params;
-  const { passwordHash } = req.body;
-  const room = rooms.get(roomId);
+app.post("/api/rooms/:roomId/verify-password", async (req, res) => {
+  try {
+    const { roomId } = req.params;
+    const { passwordHash } = req.body;
+    const room = await getRoom(roomId);
 
-  if (!room || room.expiresAt <= Date.now()) {
-    return res.status(404).json({ error: "Locker not found or has expired" });
-  }
+    if (!room || room.expiresAt <= Date.now()) {
+      return res.status(404).json({ error: "Locker not found or has expired" });
+    }
 
-  if (room.passwordHash === passwordHash) {
-    res.json({ success: true });
-  } else {
-    res.status(401).json({ error: "Incorrect passcode PIN" });
+    if (room.passwordHash === passwordHash) {
+      res.json({ success: true });
+    } else {
+      res.status(401).json({ error: "Incorrect passcode PIN" });
+    }
+  } catch (err) {
+    res.status(500).json({ error: "Verification server error" });
   }
 });
 
@@ -290,7 +461,7 @@ const activePeers = new Map<string, ConnectedPeer>();
 // Broadcast active peer list to active connections on a per-IP basis
 function broadcastPeersList() {
   const peersArray = Array.from(activePeers.values())
-    .filter(p => !p.roomId) // only broadcast zero-config peers
+    .filter(p => !p.roomId)
     .map(p => ({
       peerId: p.peerId,
       name: p.name,
@@ -308,14 +479,60 @@ function broadcastPeersList() {
   }
 }
 
+// Setup Redis Pub/Sub listeners for scaling Websockets horizontally
+function setupRedisPubSub() {
+  if (!redisSub) return;
+
+  redisSub.subscribe("sendfiles:signaling", (msgStr: string) => {
+    try {
+      const { type, targetPeerId, senderPeerId, senderName, payload } = JSON.parse(msgStr);
+      const target = activePeers.get(targetPeerId);
+      if (target && target.ws.readyState === WebSocket.OPEN) {
+        target.ws.send(JSON.stringify({
+          type,
+          senderPeerId,
+          senderName,
+          payload
+        }));
+      }
+    } catch (err) {
+      console.error("[Redis Cluster] Signaling forward error:", err);
+    }
+  });
+
+  redisSub.subscribe("sendfiles:signaling_binary", (msgStr: string) => {
+    try {
+      const { targetPeerId, bufferBase64 } = JSON.parse(msgStr);
+      const target = activePeers.get(targetPeerId);
+      if (target && target.ws.readyState === WebSocket.OPEN) {
+        const buffer = Buffer.from(bufferBase64, "base64");
+        target.ws.send(buffer, { binary: true });
+      }
+    } catch (err) {
+      console.error("[Redis Cluster] Binary forward error:", err);
+    }
+  });
+
+  redisSub.subscribe("sendfiles:room_prune", (rId: string) => {
+    for (const [pId, activePeer] of activePeers.entries()) {
+      if (activePeer.roomId === rId) {
+        try {
+          activePeer.ws.send(JSON.stringify({ type: "error", message: "Locker download limit reached" }));
+          activePeer.ws.close();
+        } catch {}
+        activePeers.delete(pId);
+      }
+    }
+  });
+}
+
 const wss = new WebSocketServer({ noServer: true });
 
-wss.on("connection", (ws: WebSocket, request) => {
+wss.on("connection", async (ws: WebSocket, request) => {
   const requestUrl = new URL(request.url || "", `http://${request.headers.host}`);
   const peerId = requestUrl.searchParams.get("peerId");
   const name = requestUrl.searchParams.get("name") || "Mystic Guest";
 
-  // Room config parameters
   const roomId = requestUrl.searchParams.get("roomId");
   const role = requestUrl.searchParams.get("role");
 
@@ -325,10 +542,20 @@ wss.on("connection", (ws: WebSocket, request) => {
     return;
   }
 
-  const forwarded = request.headers["x-forwarded-for"];
-  const clientIp = typeof forwarded === "string"
-    ? forwarded.split(",")[0].trim()
-    : request.socket.remoteAddress || "127.0.0.1";
+  const clientIp = getClientIp(request);
+
+  // Connection limit: 10 sockets max per IP address
+  let connectionsFromIp = 0;
+  for (const peer of activePeers.values()) {
+    if (peer.ip === clientIp) {
+      connectionsFromIp++;
+    }
+  }
+  if (connectionsFromIp >= 10) {
+    ws.send(JSON.stringify({ type: "error", message: "Too many active connections from this IP address" }));
+    ws.close();
+    return;
+  }
 
   const newPeer: ConnectedPeer = {
     peerId,
@@ -340,9 +567,8 @@ wss.on("connection", (ws: WebSocket, request) => {
     role: role || undefined
   };
 
-  // If room is specified, validate and wire up room discovery
   if (roomId && role) {
-    const room = rooms.get(roomId);
+    const room = await getRoom(roomId);
     if (!room || room.expiresAt <= Date.now()) {
       ws.send(JSON.stringify({ type: "error", message: "Locker has expired or does not exist." }));
       ws.close();
@@ -354,23 +580,32 @@ wss.on("connection", (ws: WebSocket, request) => {
 
     if (role === "sender") {
       room.senderPeerId = peerId;
+      await saveRoom(room);
     } else if (role === "receiver") {
       room.receiverPeerIds.add(peerId);
+      await saveRoom(room);
       
-      // Notify sender that a receiver joined, sharing receiver's peerId to initiate WebRTC offer
+      // Notify sender that a receiver joined to initiate WebRTC offer
       if (room.senderPeerId) {
         const sender = activePeers.get(room.senderPeerId);
         if (sender && sender.ws.readyState === WebSocket.OPEN) {
           sender.ws.send(JSON.stringify({
             type: "peer-joined",
-            senderPeerId: peerId, // Receiver peerId
+            senderPeerId: peerId,
+            payload: {}
+          }));
+        } else if (redisPub) {
+          await redisPub.publish("sendfiles:signaling", JSON.stringify({
+            type: "peer-joined",
+            targetPeerId: room.senderPeerId,
+            senderPeerId: peerId,
             payload: {}
           }));
         }
       }
     }
   } else {
-    // Normal zero-config P2P client connection
+    // Normal P2P client connection
     activePeers.set(peerId, newPeer);
     console.log(`[Discovery Hub] Joint connection: Name: "${name}" | ID: ${peerId} | IP: ${clientIp}`);
     setTimeout(() => {
@@ -378,48 +613,81 @@ wss.on("connection", (ws: WebSocket, request) => {
     }, 100);
   }
 
-  // Heartbeat check interval
   const pingInterval = setInterval(() => {
     if (ws.readyState === WebSocket.OPEN) {
       ws.ping();
     }
   }, 15000);
 
-  ws.on("message", (rawMessage) => {
+  ws.on("message", async (rawMessage, isBinary) => {
+    // 1. Handle Binary Chunk Relaying
+    if (isBinary) {
+      try {
+        const buffer = rawMessage as Buffer;
+        let offset = 0;
+        const msgType = buffer[offset];
+        if (msgType !== 0x01) return; // ignore non-relay formats
+        offset += 1;
+        
+        const targetLen = buffer[offset];
+        offset += 1;
+        
+        const targetPeerId = buffer.toString("utf8", offset, offset + targetLen);
+        
+        // Forward buffer
+        const target = activePeers.get(targetPeerId);
+        if (target && target.ws.readyState === WebSocket.OPEN) {
+          target.ws.send(buffer, { binary: true });
+        } else if (redisPub) {
+          await redisPub.publish("sendfiles:signaling_binary", JSON.stringify({
+            targetPeerId,
+            bufferBase64: buffer.toString("base64")
+          }));
+        }
+      } catch (err) {
+        console.error("[Discovery Hub] Binary routing error:", err);
+      }
+      return;
+    }
+
+    // 2. Handle Text (JSON) Messages
     try {
       const message = JSON.parse(rawMessage.toString());
       const { type, targetPeerId, payload } = message;
 
-      // Keep alive timestamp
       const peer = activePeers.get(peerId);
       if (peer) {
         peer.lastActive = Date.now();
       }
 
-      // Check for download completion signals to update locker stats
       if (type === "download-complete" && roomId) {
-        const room = rooms.get(roomId);
+        const room = await getRoom(roomId);
         if (room) {
           room.downloadCount++;
           console.log(`[Locker Hub] Room ${roomId} download completed. Total: ${room.downloadCount}/${room.maxDownloads}`);
           if (room.downloadCount >= room.maxDownloads) {
             console.log(`[Locker Hub] Room ${roomId} reached download limit. Instantly pruning room.`);
-            // Close active websocket connections for this locker
+            
             for (const [pId, activePeer] of activePeers.entries()) {
               if (activePeer.roomId === roomId) {
                 try {
                   activePeer.ws.send(JSON.stringify({ type: "error", message: "Locker download limit reached" }));
                   activePeer.ws.close();
                 } catch {}
-                activePeers.delete(pId);
+                  activePeers.delete(pId);
               }
             }
-            rooms.delete(roomId);
+            if (redisPub) {
+              await redisPub.publish("sendfiles:room_prune", roomId);
+            }
+            await deleteRoom(roomId);
+          } else {
+            await saveRoom(room);
           }
         }
       }
 
-      // 1. Direct relay channels
+      // Relay
       if (targetPeerId) {
         const target = activePeers.get(targetPeerId);
         if (target && target.ws.readyState === WebSocket.OPEN) {
@@ -429,13 +697,19 @@ wss.on("connection", (ws: WebSocket, request) => {
             senderName: name,
             payload
           }));
+        } else if (redisPub) {
+          await redisPub.publish("sendfiles:signaling", JSON.stringify({
+            type,
+            targetPeerId,
+            senderPeerId: peerId,
+            senderName: name,
+            payload
+          }));
         }
       } else if (roomId) {
-        // 2. Room-based signaling channel (fallback when targetPeerId is omitted by receivers)
-        const room = rooms.get(roomId);
+        const room = await getRoom(roomId);
         if (room) {
           if (role === "receiver" && room.senderPeerId) {
-            // Forward back to sender
             const sender = activePeers.get(room.senderPeerId);
             if (sender && sender.ws.readyState === WebSocket.OPEN) {
               sender.ws.send(JSON.stringify({
@@ -444,14 +718,29 @@ wss.on("connection", (ws: WebSocket, request) => {
                 senderName: name,
                 payload
               }));
+            } else if (redisPub) {
+              await redisPub.publish("sendfiles:signaling", JSON.stringify({
+                type,
+                targetPeerId: room.senderPeerId,
+                senderPeerId: peerId,
+                senderName: name,
+                payload
+              }));
             }
           } else if (role === "sender") {
-            // Broadcast to all receivers in the room
             for (const rxId of room.receiverPeerIds) {
               const rx = activePeers.get(rxId);
               if (rx && rx.ws.readyState === WebSocket.OPEN) {
                 rx.ws.send(JSON.stringify({
                   type,
+                  senderPeerId: peerId,
+                  senderName: name,
+                  payload
+                }));
+              } else if (redisPub) {
+                await redisPub.publish("sendfiles:signaling", JSON.stringify({
+                  type,
+                  targetPeerId: rxId,
                   senderPeerId: peerId,
                   senderName: name,
                   payload
@@ -466,17 +755,18 @@ wss.on("connection", (ws: WebSocket, request) => {
     }
   });
 
-  ws.on("close", () => {
+  ws.on("close", async () => {
     clearInterval(pingInterval);
     activePeers.delete(peerId);
     console.log(`[Discovery Hub] Left connection: ID ${peerId} ("${name}")`);
 
     if (roomId) {
-      const room = rooms.get(roomId);
+      const room = await getRoom(roomId);
       if (room) {
         if (role === "sender") {
           room.senderPeerId = null;
-          // Notify receivers that sender went offline
+          await saveRoom(room);
+          
           for (const rxId of room.receiverPeerIds) {
             const rx = activePeers.get(rxId);
             if (rx && rx.ws.readyState === WebSocket.OPEN) {
@@ -484,16 +774,29 @@ wss.on("connection", (ws: WebSocket, request) => {
                 type: "sender-disconnected",
                 senderPeerId: peerId
               }));
+            } else if (redisPub) {
+              await redisPub.publish("sendfiles:signaling", JSON.stringify({
+                type: "sender-disconnected",
+                targetPeerId: rxId,
+                senderPeerId: peerId
+              }));
             }
           }
         } else if (role === "receiver") {
           room.receiverPeerIds.delete(peerId);
-          // Notify sender that receiver left
+          await saveRoom(room);
+          
           if (room.senderPeerId) {
             const sender = activePeers.get(room.senderPeerId);
             if (sender && sender.ws.readyState === WebSocket.OPEN) {
               sender.ws.send(JSON.stringify({
                 type: "peer-left",
+                senderPeerId: peerId
+              }));
+            } else if (redisPub) {
+              await redisPub.publish("sendfiles:signaling", JSON.stringify({
+                type: "peer-left",
+                targetPeerId: room.senderPeerId,
                 senderPeerId: peerId
               }));
             }
@@ -510,7 +813,6 @@ wss.on("connection", (ws: WebSocket, request) => {
   });
 });
 
-// Upgrade handling for WebSockets
 const handleUpgrade = (request: any, socket: any, head: any) => {
   const pathname = new URL(request.url || "", `http://${request.headers.host}`).pathname;
   if (pathname === "/signaling") {
@@ -526,11 +828,10 @@ server.on("upgrade", handleUpgrade);
 httpsServer.on("upgrade", handleUpgrade);
 
 // Clean stale inactive connections and expired rooms
-setInterval(() => {
+setInterval(async () => {
   const now = Date.now();
-  const timeout = 10 * 60 * 1000; // 10 minutes max inactive
+  const timeout = 10 * 60 * 1000;
 
-  // Clean inactive sockets
   for (const [pId, info] of activePeers.entries()) {
     if (now - info.lastActive > timeout) {
       console.log(`[Discovery Hub] Pruning inactive peer ${pId}`);
@@ -539,27 +840,36 @@ setInterval(() => {
     }
   }
 
-  // Clean expired rooms
-  for (const [rId, room] of rooms.entries()) {
-    if (now > room.expiresAt || room.downloadCount >= room.maxDownloads) {
-      console.log(`[Locker Hub] Pruning expired/exhausted Locker Room ${rId}`);
-      // Close active websocket connections for this locker
-      for (const [pId, activePeer] of activePeers.entries()) {
-        if (activePeer.roomId === rId) {
-          try {
-            activePeer.ws.send(JSON.stringify({ type: "error", message: "Locker room expired or pruned" }));
-            activePeer.ws.close();
-          } catch {}
-          activePeers.delete(pId);
-        }
+  if (redisClient) {
+    const roomIds = await redisClient.sMembers("sendfiles:active_rooms");
+    for (const rId of roomIds) {
+      const roomExists = (await redisClient.exists(`sendfiles:room:${rId}`)) > 0;
+      if (!roomExists) {
+        console.log(`[Redis Cluster] Pruning expired room ID ${rId} from set`);
+        await redisClient.sRem("sendfiles:active_rooms", rId);
       }
-      rooms.delete(rId);
+    }
+  } else {
+    for (const [rId, room] of rooms.entries()) {
+      if (now > room.expiresAt || room.downloadCount >= room.maxDownloads) {
+        console.log(`[Locker Hub] Pruning expired/exhausted Locker Room ${rId}`);
+        for (const [pId, activePeer] of activePeers.entries()) {
+          if (activePeer.roomId === rId) {
+            try {
+              activePeer.ws.send(JSON.stringify({ type: "error", message: "Locker room expired or pruned" }));
+              activePeer.ws.close();
+            } catch {}
+            activePeers.delete(pId);
+          }
+        }
+        rooms.delete(rId);
+      }
     }
   }
 }, 60000);
 
-// Vite Middleware for Asset Serving / Compilation
 async function startApp() {
+  await initRedis();
   if (isDev) {
     const { createServer: createViteServer } = await import("vite");
     const vite = await createViteServer({
@@ -575,12 +885,8 @@ async function startApp() {
     });
   }
 
-  // Start HTTP Server
-  server.listen(PORT, "0.0.0.0", () => {
-    // Shared logging is handled in the HTTPS server startup block
-  });
+  server.listen(PORT, "0.0.0.0", () => {});
 
-  // Start HTTPS Server
   httpsServer.listen(HTTPS_PORT, "0.0.0.0", () => {
     const localUrlHttp = `http://localhost:${PORT}`;
     const localUrlHttps = `https://localhost:${HTTPS_PORT}`;
@@ -589,7 +895,6 @@ async function startApp() {
     console.log(`HTTP Local Access URL:  \x1b[36m${localUrlHttp}\x1b[0m`);
     console.log(`HTTPS Local Access URL: \x1b[36m${localUrlHttps}\x1b[0m (Recommended for LAN sharing)`);
     
-    // Log local network IPs
     const interfaces = os.networkInterfaces();
     for (const devName in interfaces) {
       const iface = interfaces[devName];
@@ -604,7 +909,6 @@ async function startApp() {
     }
     console.log(`==================================================\n`);
 
-    // Auto-open browser for local desktop runs
     if (isLocalDesktop && process.env.NO_OPEN !== "true") {
       const startCommand = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
       exec(`${startCommand} ${localUrlHttp}`, (err) => {

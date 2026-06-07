@@ -26,9 +26,9 @@ import {
   Cpu,
   ArrowLeft
 } from "lucide-react";
-import { getWebSocketURL, formatSpeed } from "./utils/webrtc-helper";
+import { getWebSocketURL, formatSpeed, fetchIceConfig } from "./utils/webrtc-helper";
 import { generateSecretKey, exportKeyToHex } from "./utils/crypto";
-import { P2PSender } from "./utils/p2p-engine";
+import { P2PSender, P2PReceiver, decodeBinaryChunk } from "./utils/p2p-engine";
 import { RoomDetails, TransferProgress } from "./types";
 
 // Import simplified subcomponents
@@ -123,6 +123,7 @@ export default function App() {
       }
     };
     fetchNetworkIps();
+    fetchIceConfig(); // Fetch dynamic STUN/TURN servers
   }, []);
 
   // Derived helper to resolve localhost/127.0.0.1 origins to the server's local network IPv4 address
@@ -181,9 +182,9 @@ export default function App() {
   // 5. Active references
   const wsRef = useRef<WebSocket | null>(null);
   const activeSenderFileRef = useRef<File | null>(null);
-  const senderAckPromiseResolver = useRef<((val: any) => void) | null>(null);
-  const incomingChunksRef = useRef<{ [index: number]: Uint8Array }>({});
   const p2pSenderRef = useRef<P2PSender | null>(null);
+  const directSenderRef = useRef<P2PSender | null>(null);
+  const directReceiverRef = useRef<P2PReceiver | null>(null);
 
   // ----------------------------------------------------
   // Hash Routing Listener
@@ -254,6 +255,7 @@ export default function App() {
       const baseWsUrl = await getWebSocketURL();
       const wsUrl = `${baseWsUrl}?peerId=${peerId}&name=${encodeURIComponent(profileName)}`;
       const ws = new WebSocket(wsUrl);
+      ws.binaryType = "arraybuffer";
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -274,9 +276,27 @@ export default function App() {
       };
 
       ws.onmessage = async (event) => {
+        if (event.data instanceof ArrayBuffer) {
+          if (directReceiverRef.current) {
+            await directReceiverRef.current.handleBinaryMessage(event.data);
+          }
+          return;
+        }
+
         try {
           const message = JSON.parse(event.data);
           const { type, senderPeerId, senderName, payload } = message;
+
+          if (type === "direct-answer" || type === "direct-ice-candidate" || type === "relay-msg") {
+            if (directSenderRef.current) {
+              directSenderRef.current.handleSignalingMessage(message);
+            }
+          }
+          if (type === "direct-offer" || type === "direct-ice-candidate" || type === "relay-msg") {
+            if (directReceiverRef.current) {
+              await directReceiverRef.current.handleSignalingMessage(message);
+            }
+          }
 
           switch (type) {
             case "peers-list":
@@ -300,7 +320,6 @@ export default function App() {
                 chunksReceived: 0,
                 totalChunks: payload.totalChunks
               });
-              incomingChunksRef.current = {};
               break;
 
             case "file-offer-response":
@@ -315,45 +334,9 @@ export default function App() {
               }
               break;
 
-            case "direct-offer":
-              setupDirectReceiverWebRTC(senderPeerId, payload);
-              break;
-
-            case "direct-answer":
-              if (directPcRef.current) {
-                try {
-                  await directPcRef.current.setRemoteDescription(new RTCSessionDescription(payload));
-                } catch (e) {
-                  console.error("Failed setting remote answer:", e);
-                }
-              }
-              break;
-
-            case "direct-ice-candidate":
-              if (directPcRef.current && payload) {
-                try {
-                  await directPcRef.current.addIceCandidate(new RTCIceCandidate(payload));
-                } catch (e) {
-                  console.error("Failed adding direct ICE candidate:", e);
-                }
-              }
-              break;
-
-            case "relay-chunk":
-              cleanupDirectWebRTC();
-              handleIncomingChunk(payload, senderPeerId);
-              break;
-
-            case "relay-chunk-ack":
-              if (senderAckPromiseResolver.current) {
-                senderAckPromiseResolver.current(true);
-              }
-              break;
-
             case "transfer-canceled":
               cleanupDirectWebRTC();
               setReceiverTransfer(null);
-              incomingChunksRef.current = {};
               break;
           }
         } catch (err) {
@@ -380,10 +363,6 @@ export default function App() {
       if (wsRef.current) {
         wsRef.current.close();
         wsRef.current = null;
-      }
-      if (directConnectTimeoutRef.current) {
-        clearTimeout(directConnectTimeoutRef.current);
-        directConnectTimeoutRef.current = null;
       }
       cleanupDirectWebRTC();
     };
@@ -432,327 +411,101 @@ export default function App() {
   };
 
   const cleanupDirectWebRTC = () => {
-    if (directChannelRef.current) {
-      try { directChannelRef.current.close(); } catch {}
-      directChannelRef.current = null;
+    if (directSenderRef.current) {
+      directSenderRef.current.stop();
+      directSenderRef.current = null;
     }
-    if (directPcRef.current) {
-      try { directPcRef.current.close(); } catch {}
-      directPcRef.current = null;
+    if (directReceiverRef.current) {
+      directReceiverRef.current.stop();
+      directReceiverRef.current = null;
     }
   };
 
   const setupDirectSenderWebRTC = async (recipientId: string, file: File) => {
     setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
 
-    let fallbackTriggered = false;
+    const sender = new P2PSender({
+      targetPeerId: recipientId,
+      files: [file],
+      ws: wsRef.current,
+      peerId: peerId
+    });
+    directSenderRef.current = sender;
 
-    const runFallback = () => {
-      if (fallbackTriggered) return;
-      fallbackTriggered = true;
-      console.log("Direct P2P WebRTC failed, falling back to WebSocket relay...");
-      cleanupDirectWebRTC();
-      beginWebSocketChunkStreaming(recipientId, file);
+    sender.onLogMessage = (msg) => {
+      console.log(`[Direct Sender] ${msg}`);
     };
 
-    const timeoutId = window.setTimeout(() => {
-      runFallback();
-    }, 3000);
-    directConnectTimeoutRef.current = timeoutId;
-
-    try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-      });
-      directPcRef.current = pc;
-
-      const channel = pc.createDataChannel("direct-transfer-channel", { ordered: true });
-      channel.binaryType = "arraybuffer";
-      directChannelRef.current = channel;
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          sendSignal({
-            type: "direct-ice-candidate",
-            targetPeerId: recipientId,
-            payload: e.candidate
-          });
-        }
-      };
-
-      channel.onopen = () => {
-        if (directConnectTimeoutRef.current) {
-          clearTimeout(directConnectTimeoutRef.current);
-          directConnectTimeoutRef.current = null;
-        }
-        beginDirectBinaryStreaming(recipientId, file, channel);
-      };
-
-      channel.onclose = () => {
-        console.log("Direct transfer channel closed");
-      };
-
-      channel.onmessage = (e) => {
-        if (typeof e.data === "string") {
-          try {
-            const msg = JSON.parse(e.data);
-            if (msg.type === "complete") {
-              setSenderTransfer(prev => prev ? { ...prev, status: "success", percent: 100 } : null);
-              cleanupDirectWebRTC();
-            }
-          } catch {}
-        }
-      };
-
-      const offer = await pc.createOffer();
-      await pc.setLocalDescription(offer);
-      sendSignal({
-        type: "direct-offer",
-        targetPeerId: recipientId,
-        payload: offer
-      });
-    } catch (err) {
-      console.error("Direct Sender WebRTC Error:", err);
-      runFallback();
-    }
-  };
-
-  const beginDirectBinaryStreaming = async (recipientId: string, file: File, channel: RTCDataChannel) => {
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const startTime = Date.now();
-    channel.bufferedAmountLowThreshold = 65536; // 64KB
-
-    // Send header details first
-    channel.send(JSON.stringify({
-      type: "header",
-      fileName: file.name,
-      fileSize: file.size,
-      totalChunks
-    }));
-
-    let lastUpdate = 0;
-
-    for (let index = 0; index < totalChunks; index++) {
-      if (!activeSenderFileRef.current || senderTransferRef.current?.status === "canceled" || channel.readyState !== "open") {
-        break;
+    sender.onPeerStatusChange = (pid, status) => {
+      if (status === "failed") {
+        setSenderTransfer(prev => prev ? { ...prev, status: "failed" } : null);
       }
+    };
 
-      // Backpressure throttle
-      if (channel.bufferedAmount > 1024 * 1024) { // 1MB limit
-        await new Promise<void>((resolve) => {
-          const onLow = () => {
-            channel.removeEventListener("bufferedamountlow", onLow);
-            resolve();
-          };
-          channel.addEventListener("bufferedamountlow", onLow);
-        });
-      }
-
-      const start = index * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const fileSlice = file.slice(start, end);
-      const buffer = await fileSlice.arrayBuffer();
-
-      channel.send(buffer);
-
-      const percent = Math.round(((index + 1) / totalChunks) * 100);
-      const now = Date.now();
-      if (now - lastUpdate > 150 || percent === 100) {
-        lastUpdate = now;
-        const elapsed = (now - startTime) / 1000;
-        const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
-        setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
-      }
-    }
-
-    // Send end indicator
-    if (channel.readyState === "open" && senderTransferRef.current?.status !== "canceled") {
-      channel.send(JSON.stringify({ type: "end" }));
-    }
-  };
-
-  const setupDirectReceiverWebRTC = async (senderId: string, offer: any) => {
-    setReceiverTransfer(prev => prev ? { ...prev, status: "transferring", percent: 0 } : null);
-
-    try {
-      const pc = new RTCPeerConnection({
-        iceServers: [{ urls: "stun:stun.l.google.com:19302" }]
-      });
-      directPcRef.current = pc;
-
-      pc.onicecandidate = (e) => {
-        if (e.candidate) {
-          sendSignal({
-            type: "direct-ice-candidate",
-            targetPeerId: senderId,
-            payload: e.candidate
-          });
-        }
-      };
-
-      pc.ondatachannel = (event) => {
-        const channel = event.channel;
-        channel.binaryType = "arraybuffer";
-        directChannelRef.current = channel;
-
-        let fileMeta: { name: string; size: number; totalChunks: number; chunksReceived: number } | null = null;
-        let chunksList: ArrayBuffer[] = [];
-        let lastUpdate = 0;
-
-        channel.onmessage = async (e) => {
-          if (typeof e.data === "string") {
-            try {
-              const msg = JSON.parse(e.data);
-              if (msg.type === "header") {
-                fileMeta = {
-                  name: msg.fileName,
-                  size: msg.fileSize,
-                  totalChunks: msg.totalChunks,
-                  chunksReceived: 0
-                };
-                chunksList = [];
-                lastUpdate = 0;
-              } else if (msg.type === "end") {
-                if (fileMeta && chunksList.length > 0) {
-                  const compiledBlob = new Blob(chunksList);
-                  const blobUrl = URL.createObjectURL(compiledBlob);
-
-                  const anchor = document.createElement("a");
-                  anchor.href = blobUrl;
-                  anchor.download = fileMeta.name;
-                  document.body.appendChild(anchor);
-                  anchor.click();
-                  document.body.removeChild(anchor);
-
-                  channel.send(JSON.stringify({ type: "complete" }));
-
-                  setReceiverTransfer(prev => prev ? { ...prev, status: "success", percent: 100 } : null);
-                  cleanupDirectWebRTC();
-                }
-              }
-            } catch (err) {
-              console.error("Direct receiver parsing crash:", err);
-            }
-          } else {
-            // Binary chunk
-            if (fileMeta) {
-              chunksList.push(e.data);
-              fileMeta.chunksReceived++;
-              const pct = Math.round((fileMeta.chunksReceived / fileMeta.totalChunks) * 100);
-              const now = Date.now();
-              if (now - lastUpdate > 150 || pct === 100) {
-                lastUpdate = now;
-                setReceiverTransfer(prev => prev ? { ...prev, percent: pct, chunksReceived: fileMeta!.chunksReceived } : null);
-              }
-            }
-          }
+    sender.onProgressUpdate = (pid, progress) => {
+      setSenderTransfer(prev => {
+        if (!prev) return null;
+        let finalStatus: typeof prev.status = "transferring";
+        if (progress.status === "complete") finalStatus = "success";
+        if (progress.status === "failed") finalStatus = "failed";
+        return {
+          ...prev,
+          percent: progress.percent,
+          speed: progress.speed,
+          status: finalStatus
         };
-      };
-
-      await pc.setRemoteDescription(new RTCSessionDescription(offer));
-      const answer = await pc.createAnswer();
-      await pc.setLocalDescription(answer);
-      sendSignal({
-        type: "direct-answer",
-        targetPeerId: senderId,
-        payload: pc.localDescription
       });
-    } catch (err) {
-      console.error("Direct receiver setup error:", err);
-    }
+    };
+
+    await sender.start();
   };
 
-  const beginWebSocketChunkStreaming = async (recipientId: string, file: File) => {
-    if (!senderTransferRef.current) return;
+  const acceptIncomingOffer = () => {
+    if (!receiverTransfer) return;
+    setReceiverTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
+    
+    sendSignal({
+      type: "file-offer-response",
+      targetPeerId: receiverTransfer.peerId,
+      payload: { accepted: true }
+    });
 
-    setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
-    const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
-    const startTime = Date.now();
-    let lastUpdate = 0;
+    const receiver = new P2PReceiver({
+      senderPeerId: receiverTransfer.peerId,
+      ws: wsRef.current,
+      peerId: peerId
+    });
+    directReceiverRef.current = receiver;
 
-    for (let index = 0; index < totalChunks; index++) {
-      if (!activeSenderFileRef.current || senderTransferRef.current?.status === "canceled") {
-        break;
-      }
-
-      const start = index * CHUNK_SIZE;
-      const end = Math.min(start + CHUNK_SIZE, file.size);
-      const fileSlice = file.slice(start, end);
-
-      const base64Data = await new Promise<string>((resolve) => {
-        const reader = new FileReader();
-        reader.onloadend = () => {
-          const result = reader.result as string;
-          resolve(result.substring(result.indexOf(",") + 1));
+    receiver.onStatusChange = (status) => {
+      setReceiverTransfer(prev => {
+        if (!prev) return null;
+        let finalStatus: typeof prev.status = "transferring";
+        if (status === "complete") finalStatus = "success";
+        if (status === "failed") finalStatus = "failed";
+        return {
+          ...prev,
+          status: finalStatus
         };
-        reader.readAsDataURL(fileSlice);
       });
+    };
 
-      sendSignal({
-        type: "relay-chunk",
-        targetPeerId: recipientId,
-        payload: {
-          chunkIndex: index,
-          totalChunks,
-          data: base64Data,
-          fileName: file.name
-        }
+    receiver.onProgress = (progress) => {
+      setReceiverTransfer(prev => {
+        if (!prev) return null;
+        return {
+          ...prev,
+          percent: progress.percent,
+          chunksReceived: progress.bytesSentOrReceived
+        };
       });
+    };
 
-      const percent = Math.round(((index + 1) / totalChunks) * 100);
-      const now = Date.now();
-      if (now - lastUpdate > 150 || percent === 100) {
-        lastUpdate = now;
-        const elapsed = (now - startTime) / 1000;
-        const speed = elapsed > 0 ? ((index + 1) * CHUNK_SIZE) / elapsed : 0;
-        setSenderTransfer(prev => prev ? { ...prev, percent, speed } : null);
-      }
+    receiver.onLogMessage = (msg) => {
+      console.log(`[Direct Receiver] ${msg}`);
+    };
 
-      // Throttle based on WebSocket buffer amount to prevent memory bloating
-      if (wsRef.current && wsRef.current.bufferedAmount > 1024 * 1024) { // 1MB
-        await new Promise<void>((resolve) => {
-          const checkBuffer = setInterval(() => {
-            if (!activeSenderFileRef.current || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || wsRef.current.bufferedAmount < 256 * 1024) {
-              clearInterval(checkBuffer);
-              resolve();
-            }
-          }, 10);
-        });
-      }
-    }
-
-    // Wait for the final chunk to be acknowledged by the receiver before marking success
-    if (activeSenderFileRef.current && senderTransferRef.current?.status !== "canceled") {
-      await new Promise<void>((resolve) => {
-        senderAckPromiseResolver.current = resolve;
-        setTimeout(resolve, 3000); // 3 seconds timeout fallback
-      });
-    }
-
-    setSenderTransfer(prev => prev && prev.status === "transferring" ? {
-      ...prev,
-      percent: 100,
-      status: "success"
-    } : prev);
-
-    activeSenderFileRef.current = null;
-  };
-
-  const cancelSenderFlow = () => {
-    if (directConnectTimeoutRef.current) {
-      clearTimeout(directConnectTimeoutRef.current);
-      directConnectTimeoutRef.current = null;
-    }
-    cleanupDirectWebRTC();
-    const currentSenderTransfer = senderTransferRef.current;
-    if (currentSenderTransfer) {
-      sendSignal({
-        type: "transfer-canceled",
-        targetPeerId: currentSenderTransfer.peerId
-      });
-    }
-    setSenderTransfer(null);
-    activeSenderFileRef.current = null;
+    receiver.start();
   };
 
   const declineIncomingOffer = () => {
@@ -765,72 +518,19 @@ export default function App() {
       });
     }
     setReceiverTransfer(null);
-    incomingChunksRef.current = {};
   };
 
-  const acceptIncomingOffer = () => {
-    if (!receiverTransfer) return;
-    setReceiverTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
-    sendSignal({
-      type: "file-offer-response",
-      targetPeerId: receiverTransfer.peerId,
-      payload: { accepted: true }
-    });
-  };
-
-  const handleIncomingChunk = (payload: any, senderId: string) => {
-    const { chunkIndex, totalChunks, data, fileName } = payload;
-    
-    try {
-      const decodedString = window.atob(data);
-      const bytes = new Uint8Array(decodedString.length);
-      for (let i = 0; i < decodedString.length; i++) {
-        bytes[i] = decodedString.charCodeAt(i);
-      }
-
-      incomingChunksRef.current[chunkIndex] = bytes;
-
+  const cancelSenderFlow = () => {
+    cleanupDirectWebRTC();
+    const currentSenderTransfer = senderTransferRef.current;
+    if (currentSenderTransfer) {
       sendSignal({
-        type: "relay-chunk-ack",
-        targetPeerId: senderId,
-        payload: { chunkIndex }
+        type: "transfer-canceled",
+        targetPeerId: currentSenderTransfer.peerId
       });
-
-      const currentCount = Object.keys(incomingChunksRef.current).length;
-      const percent = Math.round((currentCount / totalChunks) * 100);
-
-      setReceiverTransfer(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          chunksReceived: currentCount,
-          percent,
-          status: currentCount >= totalChunks ? "success" : "transferring"
-        };
-      });
-
-      if (currentCount >= totalChunks) {
-        const sortedBuffers: Uint8Array[] = [];
-        for (let i = 0; i < totalChunks; i++) {
-          sortedBuffers.push(incomingChunksRef.current[i] || new Uint8Array(0));
-        }
-
-        const assembledBlob = new Blob(sortedBuffers);
-        const blobUrl = URL.createObjectURL(assembledBlob);
-
-        const anchor = document.createElement("a");
-        anchor.href = blobUrl;
-        anchor.download = fileName;
-        document.body.appendChild(anchor);
-        anchor.click();
-        document.body.removeChild(anchor);
-
-        incomingChunksRef.current = {};
-      }
-    } catch (e) {
-      console.error("Failed handling chunk slice:", e);
-      setReceiverTransfer(prev => prev ? { ...prev, status: "failed" } : null);
     }
+    setSenderTransfer(null);
+    activeSenderFileRef.current = null;
   };
 
   // ----------------------------------------------------
@@ -841,12 +541,14 @@ export default function App() {
     maxDownloads,
     expiresInMins,
     passwordHash,
+    passwordSalt,
     rawPassword,
   }: {
     files: File[];
     maxDownloads: number;
     expiresInMins: number;
     passwordHash: string | null;
+    passwordSalt?: string;
     rawPassword?: string;
   }) => {
     setIsCreatingLocker(true);
@@ -861,7 +563,8 @@ export default function App() {
           files: files.map(f => ({ name: f.name, size: f.size, type: f.type })),
           maxDownloads,
           expiresInMins,
-          passwordHash
+          passwordHash,
+          passwordSalt
         })
       });
       
@@ -871,7 +574,11 @@ export default function App() {
       
       const roomInfo = await res.json();
       
-      const sender = new P2PSender(roomInfo.roomId, files, cryptoKey);
+      const sender = new P2PSender({
+        roomId: roomInfo.roomId,
+        files,
+        cryptoKey
+      });
       p2pSenderRef.current = sender;
       
       const shareUrl = `${resolvedOrigin}/#/locker/${roomInfo.roomId}#key=${keyHex}`;

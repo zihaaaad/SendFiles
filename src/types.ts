@@ -12,6 +12,7 @@ export interface FileMeta {
 export interface RoomDetails {
   roomId: string;
   hasPassword: boolean;
+  passwordSalt?: string;
   expiresAt: number;
   maxDownloads: number;
   downloadCount: number;

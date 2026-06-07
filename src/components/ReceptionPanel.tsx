@@ -62,7 +62,8 @@ export default function ReceptionPanel({
     setErrorMsg("");
 
     try {
-      const pHash = await hashPassword(password);
+      const result = await hashPassword(password, roomDetails.passwordSalt);
+      const pHash = result.hash;
       const res = await fetch(`/api/rooms/${roomId}/verify-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -87,7 +88,10 @@ export default function ReceptionPanel({
   useEffect(() => {
     if (!useVerified) return;
     
-    const receiver = new P2PReceiver(roomId, encryptionKeyHex);
+    const receiver = new P2PReceiver({
+      roomId,
+      encryptionKeyHex
+    });
     receiverRef.current = receiver;
 
     receiver.onStatusChange = (status) => {

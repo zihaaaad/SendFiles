@@ -6,7 +6,7 @@
 import { FileMeta, TransferProgress, TransferState } from "../types";
 
 const CHUNK_SIZE = 32768; // 32KB chunking specification size
-export const ICE_CONFIG: RTCConfiguration = {
+let cachedIceConfig: RTCConfiguration = {
   iceServers: [
     { urls: "stun:stun.l.google.com:19302" },
     { urls: "stun:stun1.l.google.com:19302" },
@@ -15,6 +15,25 @@ export const ICE_CONFIG: RTCConfiguration = {
     { urls: "stun:stun4.l.google.com:19302" },
   ],
 };
+
+export function getIceConfig(): RTCConfiguration {
+  return cachedIceConfig;
+}
+
+export async function fetchIceConfig(): Promise<RTCConfiguration> {
+  try {
+    const res = await fetch("/api/ice-config");
+    if (res.ok) {
+      const data = await res.json();
+      if (data.iceServers) {
+        cachedIceConfig = data;
+      }
+    }
+  } catch (err) {
+    console.error("Failed to fetch dynamic ICE config, falling back to STUNs:", err);
+  }
+  return cachedIceConfig;
+}
 
 export interface SpeedMeasurement {
   speed: number; // Bytes / sec

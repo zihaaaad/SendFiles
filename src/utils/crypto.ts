@@ -88,13 +88,51 @@ export async function decryptChunk(
   );
 }
 
-// Fast SHA-256 hashing for room passwords
-export async function hashPassword(password: string): Promise<string> {
+export interface PasswordHashResult {
+  hash: string;
+  salt: string;
+}
+
+// Secure PBKDF2 hashing for room passwords (600,000 iterations of SHA-256)
+export async function hashPassword(password: string, saltHex?: string): Promise<PasswordHashResult> {
   const encoder = new TextEncoder();
-  const data = encoder.encode(password);
-  const hashBuffer = await window.crypto.subtle.digest("SHA-256", data);
+  const passwordBuffer = encoder.encode(password);
   
-  return Array.from(new Uint8Array(hashBuffer))
+  let salt: Uint8Array;
+  if (saltHex) {
+    salt = new Uint8Array(
+      saltHex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16))
+    );
+  } else {
+    salt = window.crypto.getRandomValues(new Uint8Array(16));
+  }
+  
+  const baseKey = await window.crypto.subtle.importKey(
+    "raw",
+    passwordBuffer,
+    "PBKDF2",
+    false,
+    ["deriveBits", "deriveKey"]
+  );
+  
+  const derivedBits = await window.crypto.subtle.deriveBits(
+    {
+      name: "PBKDF2",
+      salt,
+      iterations: 600000,
+      hash: "SHA-256",
+    },
+    baseKey,
+    256
+  );
+  
+  const hash = Array.from(new Uint8Array(derivedBits))
     .map((b) => b.toString(16).padStart(2, "0"))
     .join("");
+    
+  const saltStr = Array.from(salt)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+    
+  return { hash, salt: saltStr };
 }
