@@ -276,13 +276,13 @@ export class P2PSender {
       }
     };
 
-    // Timeout: if connection doesn't succeed within 5 seconds, initiate relay fallback
+    // Timeout: if connection doesn't succeed within 2 seconds, initiate relay fallback (Gigabit optimized LAN fallback speed)
     setTimeout(() => {
       if (!connected && this.peers.get(rxPeerId) === pc && pc.connectionState !== "connected") {
         this.onLogMessage(`WebRTC connection negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
         this.initiateRelayFallback(rxPeerId);
       }
-    }, 5000);
+    }, 2000);
 
     channel.onopen = () => {
       connected = true;

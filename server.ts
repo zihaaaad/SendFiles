@@ -191,13 +191,17 @@ app.get("/api/network-ips", (req, res) => {
 
 // Ice Traversal Configuration Endpoint
 app.get("/api/ice-config", (req, res) => {
-  const iceServers: any[] = [
-    { urls: "stun:stun.l.google.com:19302" },
-    { urls: "stun:stun1.l.google.com:19302" },
-    { urls: "stun:stun2.l.google.com:19302" },
-    { urls: "stun:stun3.l.google.com:19302" },
-    { urls: "stun:stun4.l.google.com:19302" }
-  ];
+  const iceServers: any[] = [];
+
+  if (process.env.OFFLINE_MODE !== "true") {
+    iceServers.push(
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun3.l.google.com:19302" },
+      { urls: "stun:stun4.l.google.com:19302" }
+    );
+  }
 
   if (process.env.TURN_SERVER_URL) {
     iceServers.push({
