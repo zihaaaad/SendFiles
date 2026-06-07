@@ -3,13 +3,14 @@
   "private": true,
   "version": "0.0.0",
   "type": "module",
+  "bin": "dist/server.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --external:vite --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "package": "npm run build && pkg dist/server.cjs --targets node18-win-x64,node18-linux-x64 --out-path release",
+    "package": "npm run build && pkg . --targets node18-win-x64,node18-linux-x64 --out-path release",
     "test": "vitest run"
   },
   "pkg": {

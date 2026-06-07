@@ -36,7 +36,7 @@ jobs:
 
       - name: Build Standalone Binaries (pkg)
         run: |
-          npx pkg dist/server.cjs --targets node18-win-x64,node18-linux-x64,node18-macos-x64,node18-macos-arm64 --no-bytecode --public --out-path release
+          npx pkg . --targets node18-win-x64,node18-linux-x64,node18-macos-x64,node18-macos-arm64 --no-bytecode --public --out-path release
           # Rename standing binaries with safe find checks to handle suffixes
           find release -type f -name "*win*" -exec mv {} release/sendfiles-windows.exe \;
           find release -type f -name "*linux*" -exec mv {} release/sendfiles-linux \;
