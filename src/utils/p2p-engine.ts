@@ -8,7 +8,7 @@ import { encryptChunk, decryptChunk, importKeyFromHex } from "./crypto";
 import { saveChunkToDB, compileFilesFromDB, clearRoomFromDB } from "./db";
 import { calculateSpeedAndETA, getWebSocketURL, getIceConfig } from "./webrtc-helper";
 
-const CHUNK_SIZE = 32768; // 32KB chunk specs
+const CHUNK_SIZE = 1048576; // 1MB LAN-optimized chunking size
 
 // ----------------------------------------------------
 // Binary Framing Protocol for high-performance WS relay

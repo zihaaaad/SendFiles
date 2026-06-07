@@ -30,6 +30,7 @@ import { getWebSocketURL, formatSpeed, fetchIceConfig } from "./utils/webrtc-hel
 import { generateSecretKey, exportKeyToHex } from "./utils/crypto";
 import { P2PSender, P2PReceiver, decodeBinaryChunk } from "./utils/p2p-engine";
 import { RoomDetails, TransferProgress } from "./types";
+import QRCode from "qrcode";
 
 // Import simplified subcomponents
 import CreateLocker from "./components/CreateLocker";
@@ -37,8 +38,8 @@ import LockerDashboard from "./components/LockerDashboard";
 import NetworkDiscoveryHub from "./components/NetworkDiscoveryHub";
 import ReceptionPanel from "./components/ReceptionPanel";
 
-// Chunk size for direct WebSocket relay: 60kb
-const CHUNK_SIZE = 60000;
+// Chunk size for direct WebSocket relay: 1MB (Gigabit optimized LAN chunking)
+const CHUNK_SIZE = 1048576;
 
 const ADJECTIVES = [
   "Forest", "Cedar", "Mossy", "Fern", "Spruce", "Timber",
@@ -135,6 +136,16 @@ export default function App() {
     }
     return window.location.origin;
   })();
+
+  const [localQrCodeDataUrl, setLocalQrCodeDataUrl] = useState<string>("");
+  const [showSslGuide, setShowSslGuide] = useState(false);
+
+  useEffect(() => {
+    if (!resolvedOrigin) return;
+    QRCode.toDataURL(resolvedOrigin, { margin: 1, width: 150 })
+      .then(setLocalQrCodeDataUrl)
+      .catch((err) => console.error("Failed to generate portal QR code locally:", err));
+  }, [resolvedOrigin]);
 
   // Direct Beam Sender State
   const [senderTransfer, setSenderTransfer] = useState<{
@@ -709,10 +720,47 @@ export default function App() {
       
       {/* Insecure Context Warning Banner */}
       {isInsecureContext && (
-        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 text-[11.5px] font-mono px-4 py-2.5 flex items-center justify-between relative z-50">
-          <div className="flex items-center max-w-4xl mx-auto space-x-2">
-            <span className="font-bold flex-shrink-0">⚠️ SECURE CONTEXT REQUIRED:</span>
-            <span>WebRTC and Cryptography APIs are blocked on insecure HTTP local IPs. Please reload using the secure HTTPS link: <a href={`https://${window.location.hostname}:${parseInt(window.location.port) + 1 || 3001}${window.location.hash}`} className="underline font-bold text-rose-900 hover:text-rose-950">https://{window.location.hostname}:3001</a></span>
+        <div className="bg-rose-50 border-b border-rose-200 text-rose-800 text-[11.5px] font-mono px-4 py-3 relative z-50">
+          <div className="max-w-4xl mx-auto space-y-2.5">
+            <div className="flex items-start sm:items-center justify-between gap-3 flex-wrap sm:flex-nowrap">
+              <div className="flex items-center space-x-2">
+                <span className="font-bold flex-shrink-0">⚠️ SECURE CONTEXT REQUIRED:</span>
+                <span>
+                  WebRTC/Crypto APIs are blocked on insecure HTTP. Please reload on the secure HTTPS port:{" "}
+                  <a
+                    href={`https://${window.location.hostname}:${parseInt(window.location.port) + 1 || 3001}${window.location.hash}`}
+                    className="underline font-bold text-rose-900 hover:text-rose-950"
+                  >
+                    https://{window.location.hostname}:3001
+                  </a>
+                </span>
+              </div>
+              <button
+                onClick={() => setShowSslGuide(!showSslGuide)}
+                className="text-[10px] font-bold uppercase tracking-wider text-rose-700 hover:text-rose-900 underline cursor-pointer shrink-0"
+              >
+                {showSslGuide ? "Hide SSL Bypass Guide" : "How to Bypass Certificate Warning?"}
+              </button>
+            </div>
+
+            {showSslGuide && (
+              <div className="bg-white/60 rounded-lg p-3 border border-rose-200/50 text-[10.5px] leading-relaxed text-slate-700 space-y-2 animate-in slide-in-from-top-1 duration-150">
+                <p className="font-bold text-slate-800">
+                  Because this is an offline LAN-only connection, the local HTTPS server uses a self-signed SSL certificate. Your browser will show a security warning. Follow these steps to bypass it safely:
+                </p>
+                <ul className="list-disc pl-4.5 space-y-1">
+                  <li>
+                    <strong>Chrome / Edge / Brave:</strong> Click <em>"Advanced"</em> (or <em>"Advanced settings"</em>) and choose <em>"Proceed to [IP] (unsafe)"</em>. If the proceed link is missing, type <code className="bg-rose-100 px-1 py-0.5 rounded font-bold text-rose-900">thisisunsafe</code> anywhere directly on the warning page.
+                  </li>
+                  <li>
+                    <strong>Firefox:</strong> Click <em>"Advanced..."</em> and select <em>"Accept the Risk and Continue"</em>.
+                  </li>
+                  <li>
+                    <strong>Safari (iOS / macOS):</strong> Click <em>"Show Details"</em> at the bottom, then click <em>"visit this website"</em>, and confirm by tapping <em>"Visit Website"</em> (requires device passcode/TouchID).
+                  </li>
+                </ul>
+              </div>
+            )}
           </div>
         </div>
       )}
@@ -794,12 +842,16 @@ export default function App() {
 
             {/* Local Network QR Code Link */}
             <div className="glass-panel rounded-xl p-4 flex flex-col sm:flex-row items-center gap-4 shadow-md">
-              <div className="bg-white p-1 rounded-lg shrink-0 border border-slate-200">
-                <img 
-                  src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(qrUrl)}`} 
-                  alt="Network QR Code" 
-                  className="w-20 h-20 block"
-                />
+              <div className="bg-white p-1 rounded-lg shrink-0 border border-slate-200 flex items-center justify-center min-w-[80px] min-h-[80px]">
+                {localQrCodeDataUrl ? (
+                  <img 
+                    src={localQrCodeDataUrl} 
+                    alt="Network QR Code" 
+                    className="w-20 h-20 block"
+                  />
+                ) : (
+                  <div className="w-20 h-20 bg-slate-100 animate-pulse rounded" />
+                )}
               </div>
               <div className="space-y-1.5 text-center sm:text-left min-w-0 select-none">
                 <span className="text-[8.5px] font-mono text-[#265c34] uppercase tracking-widest font-bold block">Local Network Portal</span>

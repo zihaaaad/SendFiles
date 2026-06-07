@@ -17,6 +17,7 @@ import {
 } from "lucide-react";
 import { TransferProgress } from "../types";
 import { formatSpeed, formatTime } from "../utils/webrtc-helper";
+import QRCode from "qrcode";
 
 interface LockerDashboardProps {
   roomId: string;
@@ -44,6 +45,13 @@ export default function LockerDashboard({
 }: LockerDashboardProps) {
   const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>("calculating...");
+  const [qrCodeDataUrl, setQrCodeDataUrl] = useState<string>("");
+
+  useEffect(() => {
+    QRCode.toDataURL(shareUrl, { margin: 1, width: 150 })
+      .then(setQrCodeDataUrl)
+      .catch((err) => console.error("Failed to generate QR code locally:", err));
+  }, [shareUrl]);
 
   // Copy share URL with fallback
   const copyShareLink = async () => {
@@ -150,11 +158,15 @@ export default function LockerDashboard({
         {/* QR Code */}
         <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#265c34]/5 border border-brand-border/60 rounded-xl p-3.5">
           <div className="bg-white p-1 rounded-lg shrink-0 border border-slate-200 shadow-sm">
-            <img 
-              src={`https://api.qrserver.com/v1/create-qr-code/?size=150x150&data=${encodeURIComponent(shareUrl)}`} 
-              alt="Locker QR Code" 
-              className="w-20 h-20 block"
-            />
+            {qrCodeDataUrl ? (
+              <img 
+                src={qrCodeDataUrl} 
+                alt="Locker QR Code" 
+                className="w-20 h-20 block"
+              />
+            ) : (
+              <div className="w-20 h-20 bg-slate-100 animate-pulse rounded-lg" />
+            )}
           </div>
           <div className="space-y-1 text-center sm:text-left select-none">
             <h4 className="text-[11px] font-bold text-slate-800 uppercase tracking-wider">Scan with phone camera</h4>
