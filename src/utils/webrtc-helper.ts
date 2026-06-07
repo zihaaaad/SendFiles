@@ -6,11 +6,33 @@
 import { FileMeta, TransferProgress, TransferState } from "../types";
 
 const CHUNK_SIZE = 1048576; // 1MB LAN-optimized chunking size
+
+const defaultPublicIceServers: RTCIceServer[] = [
+  { urls: "stun:stun.l.google.com:19302" },
+  { urls: "stun:stun1.l.google.com:19302" },
+  { urls: "stun:stun2.l.google.com:19302" },
+  { urls: "stun:stun3.l.google.com:19302" },
+  { urls: "stun:stun4.l.google.com:19302" },
+];
+
 let cachedIceConfig: RTCConfiguration = {
-  iceServers: [],
+  iceServers: typeof navigator !== "undefined" && navigator.onLine ? defaultPublicIceServers : [],
 };
 
 export function getIceConfig(): RTCConfiguration {
+  const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
+  if (!isOnline && cachedIceConfig.iceServers) {
+    return {
+      ...cachedIceConfig,
+      iceServers: cachedIceConfig.iceServers.filter(server => {
+        const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+        return urls.some(url => {
+          const part = url.split(":")[1] || "";
+          return part.includes("127.0.0.1") || part.includes("localhost") || part.includes("192.168.") || part.includes("10.") || part.includes(".local");
+        });
+      })
+    };
+  }
   return cachedIceConfig;
 }
 
