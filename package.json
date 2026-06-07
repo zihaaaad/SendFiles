@@ -10,7 +10,7 @@
     "start": "node dist/server.cjs",
     "clean": "rm -rf dist server.js",
     "lint": "tsc --noEmit",
-    "package": "npm run build && pkg . --targets node18-win-x64,node18-linux-x64 --out-path release",
+    "package": "npm run build && node -e \"const fs=require('fs'); fs.writeFileSync('dist/package.json', JSON.stringify({name:'sendfiles',bin:'server.cjs',pkg:{assets:['index.html','assets/**/*','sw.js']}}))\" && pkg dist --targets node18-win-x64,node18-linux-x64 --out-path release",
     "test": "vitest run"
   },
   "pkg": {
