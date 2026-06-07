@@ -30,6 +30,9 @@ interface LockerDashboardProps {
   activePeers: Map<string, string>; // peerId -> status
   peerProgressList: Map<string, TransferProgress>; // peerId -> progress
   onShutdown: () => void;
+  networkIps?: string[];
+  selectedIp?: string;
+  onSelectedIpChange?: (ip: string) => void;
 }
 
 export default function LockerDashboard({
@@ -42,6 +45,9 @@ export default function LockerDashboard({
   activePeers,
   peerProgressList,
   onShutdown,
+  networkIps,
+  selectedIp,
+  onSelectedIpChange,
 }: LockerDashboardProps) {
   const [copied, setCopied] = useState(false);
   const [timeLeft, setTimeLeft] = useState<string>("calculating...");
@@ -154,6 +160,26 @@ export default function LockerDashboard({
             <span>{copied ? "COPIED" : "COPY LINK"}</span>
           </button>
         </div>
+
+        {/* IP Selector (if multiple IPs) */}
+        {networkIps && networkIps.length > 1 && selectedIp && onSelectedIpChange && (
+          <div className="flex flex-col sm:flex-row sm:items-center gap-1.5 select-none px-1 py-0.5">
+            <span className="text-[9px] font-mono text-slate-500 uppercase tracking-widest font-black">
+              Share Interface IP:
+            </span>
+            <select
+              value={selectedIp}
+              onChange={(e) => onSelectedIpChange(e.target.value)}
+              className="text-[10px] font-mono font-bold text-[#265c34] bg-white border border-slate-200 rounded-lg px-2 py-1 outline-none cursor-pointer hover:border-[#265c34]/50 focus:border-[#265c34] transition-all"
+            >
+              {networkIps.map((ip) => (
+                <option key={ip} value={ip}>
+                  {ip} {ip.startsWith("192.168.56.") ? "(VirtualBox)" : ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.2") ? "(Virtual/WSL)" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+        )}
 
         {/* QR Code */}
         <div className="flex flex-col sm:flex-row items-center gap-4 bg-[#265c34]/5 border border-brand-border/60 rounded-xl p-3.5">

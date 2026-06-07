@@ -111,6 +111,7 @@ export default function App() {
   const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [networkIps, setNetworkIps] = useState<string[]>([]);
+  const [selectedIp, setSelectedIp] = useState<string>("");
 
   useEffect(() => {
     const fetchNetworkIps = async () => {
@@ -118,7 +119,30 @@ export default function App() {
         const res = await fetch("/api/network-ips");
         if (res.ok) {
           const data = await res.json();
-          setNetworkIps(data.ips || []);
+          const rawIps: string[] = data.ips || [];
+          
+          // Heuristic scoring to prioritize real physical LAN interfaces (WiFi/Ethernet) over virtual ones
+          const scoreIp = (ip: string): number => {
+            if (ip.startsWith("127.")) return -10;
+            if (ip.startsWith("192.168.56.")) return 1; // VirtualBox Host-Only
+            if (ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.19.")) return 1; // Common Docker bridge subnets
+            
+            // Standard common home/office router subnets (most likely physical interface)
+            if (ip.startsWith("192.168.0.") || ip.startsWith("192.168.1.") || ip.startsWith("192.168.2.") || ip.startsWith("192.168.100.")) return 10;
+            if (ip.startsWith("10.0.0.") || ip.startsWith("10.0.1.") || ip.startsWith("10.0.2.") || ip.startsWith("10.1.10.")) return 10;
+            
+            // Generic LAN private subnets
+            if (ip.startsWith("192.168.")) return 5;
+            if (ip.startsWith("10.")) return 5;
+            if (ip.startsWith("172.16.") || ip.startsWith("172.2") || ip.startsWith("172.30.") || ip.startsWith("172.31.")) return 3; // WSL/Hyper-V network adapters
+            return 2;
+          };
+          
+          const sortedIps = [...rawIps].sort((a, b) => scoreIp(b) - scoreIp(a));
+          setNetworkIps(sortedIps);
+          if (sortedIps.length > 0) {
+            setSelectedIp(sortedIps[0]);
+          }
         }
       } catch (err) {
         console.error("Failed to fetch server IPs:", err);
@@ -136,9 +160,9 @@ export default function App() {
   // Derived helper to resolve localhost/127.0.0.1 origins to the server's local network IPv4 address
   const resolvedOrigin = (() => {
     const isLocal = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
-    if (isLocal && networkIps.length > 0) {
+    if (isLocal && selectedIp) {
       const portPart = window.location.port ? `:${window.location.port}` : "";
-      return `${window.location.protocol}//${networkIps[0]}${portPart}`;
+      return `${window.location.protocol}//${selectedIp}${portPart}`;
     }
     return window.location.origin;
   })();
@@ -865,8 +889,26 @@ export default function App() {
                 <p className="text-[10.5px] text-slate-600 leading-relaxed font-medium">
                   Scan this code with your phone to open SendFiles and pair instantly.
                 </p>
-                <div className="text-[9.5px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block max-w-full truncate font-bold">
-                  {qrUrl}
+                <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2 mt-1.5">
+                  <div className="text-[9.5px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded border border-slate-200 inline-block max-w-full truncate font-bold">
+                    {qrUrl}
+                  </div>
+                  {networkIps.length > 1 && (
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-[8px] font-mono text-slate-550 uppercase tracking-wide font-bold">Interface IP:</span>
+                      <select
+                        value={selectedIp}
+                        onChange={(e) => setSelectedIp(e.target.value)}
+                        className="text-[9px] font-mono font-bold text-[#265c34] bg-white border border-slate-200 rounded-lg px-1.5 py-0.5 outline-none cursor-pointer hover:border-[#265c34]/55 focus:border-[#265c34] transition-all"
+                      >
+                        {networkIps.map((ip) => (
+                          <option key={ip} value={ip}>
+                            {ip} {ip.startsWith("192.168.56.") ? "(VirtualBox)" : ip.startsWith("172.17.") || ip.startsWith("172.18.") || ip.startsWith("172.2") ? "(Virtual/WSL)" : ""}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
+                  )}
                 </div>
               </div>
             </div>
@@ -1174,11 +1216,14 @@ export default function App() {
             maxDownloads={createdLockerData.maxDownloads}
             downloadCount={createdLockerData.downloadCount}
             rawPassword={createdLockerData.rawPassword}
-            shareUrl={createdLockerData.shareUrl}
+            shareUrl={createdLockerData.shareUrl.includes('#key=') ? `${resolvedOrigin}/#/locker/${createdLockerData.roomId}#key=${createdLockerData.shareUrl.split('#key=')[1]}` : createdLockerData.shareUrl}
             logs={createdLockerData.logs}
             activePeers={createdLockerData.activePeers}
             peerProgressList={createdLockerData.peerProgressList}
             onShutdown={handleShutdownLocker}
+            networkIps={networkIps}
+            selectedIp={selectedIp}
+            onSelectedIpChange={setSelectedIp}
           />
         )}
 
