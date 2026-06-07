@@ -1,0 +1,1144 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="SendFiles P2P - Secure, zero-configuration peer-to-peer file sharing platform. Features end-to-end encryption, local LAN discovery, and Service Worker stream downloads.">
+  <title>SendFiles P2P - Secure Zero-Config Peer-to-Peer File Sharing</title>
+  
+  <!-- Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <style>
+    :root {
+      --primary: hsl(136, 42%, 25%);
+      --primary-light: hsl(136, 38%, 33%);
+      --primary-glow: hsla(136, 42%, 25%, 0.15);
+      --bg: hsl(136, 40%, 98%);
+      --panel-bg: rgba(255, 255, 255, 0.75);
+      --panel-border: rgba(38, 92, 52, 0.12);
+      --text: hsl(215, 28%, 17%);
+      --text-muted: hsl(215, 16%, 47%);
+      --accent: hsl(142, 60%, 45%);
+      --font-sans: 'Outfit', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    html {
+      scroll-behavior: smooth;
+    }
+
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      overflow-x: hidden;
+      background-image: 
+        radial-gradient(at 0% 0%, hsla(136, 40%, 85%, 0.3) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, hsla(142, 50%, 90%, 0.3) 0px, transparent 50%);
+      background-attachment: fixed;
+    }
+
+    /* Selection Color */
+    ::selection {
+      background-color: var(--primary-glow);
+      color: var(--primary);
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar {
+      width: 8px;
+    }
+    ::-webkit-scrollbar-track {
+      background: transparent;
+    }
+    ::-webkit-scrollbar-thumb {
+      background: var(--panel-border);
+      border-radius: 4px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: var(--primary-glow);
+    }
+
+    /* Container Utility */
+    .container {
+      width: 100%;
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 0 1.5rem;
+    }
+
+    /* Glassmorphism Panel */
+    .glass {
+      background: var(--panel-bg);
+      backdrop-filter: blur(16px);
+      -webkit-backdrop-filter: blur(16px);
+      border: 1px solid var(--panel-border);
+      box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.04);
+    }
+
+    /* Header & Navigation */
+    header {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      z-index: 100;
+      padding: 0.75rem 0;
+      transition: all 0.3s ease;
+    }
+
+    header.scrolled {
+      padding: 0.5rem 0;
+      background: rgba(255, 255, 255, 0.85);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--panel-border);
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.02);
+    }
+
+    .nav-container {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+    }
+
+    .logo {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      text-decoration: none;
+      color: var(--primary);
+      font-weight: 700;
+      font-size: 1.1rem;
+      letter-spacing: -0.5px;
+    }
+
+    .logo i {
+      color: var(--primary);
+      animation: pulse 2s infinite ease-in-out;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 2rem;
+      align-items: center;
+      list-style: none;
+    }
+
+    .nav-links a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-weight: 500;
+      font-size: 0.95rem;
+      transition: color 0.2s ease;
+    }
+
+    .nav-links a:hover {
+      color: var(--primary);
+    }
+
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.5rem;
+      padding: 0.6rem 1.2rem;
+      border-radius: 0.75rem;
+      font-weight: 600;
+      font-size: 0.9rem;
+      text-decoration: none;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      cursor: pointer;
+    }
+
+    .btn-primary {
+      background: var(--primary);
+      color: white;
+      border: 1px solid var(--primary);
+    }
+
+    .btn-primary:hover {
+      background: var(--primary-light);
+      border-color: var(--primary-light);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .btn-secondary {
+      background: transparent;
+      color: var(--primary);
+      border: 1px solid var(--panel-border);
+    }
+
+    .btn-secondary:hover {
+      background: var(--primary-glow);
+      border-color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    /* Hero Section */
+    .hero {
+      padding: 8rem 0 4rem 0;
+      text-align: center;
+      position: relative;
+    }
+
+    .hero-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 0.4rem;
+      padding: 0.3rem 0.8rem;
+      border-radius: 9999px;
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--primary);
+      background: var(--primary-glow);
+      border: 1px solid rgba(38, 92, 52, 0.15);
+      margin-bottom: 1.5rem;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    .hero-badge span {
+      display: inline-block;
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--accent);
+      animation: blink 1.5s infinite;
+    }
+
+    .hero h1 {
+      font-size: clamp(2.2rem, 5vw, 3.8rem);
+      font-weight: 800;
+      line-height: 1.1;
+      letter-spacing: -1.5px;
+      color: var(--text);
+      max-width: 850px;
+      margin: 0 auto 1.5rem auto;
+    }
+
+    .hero h1 span {
+      background: linear-gradient(135deg, var(--primary) 30%, var(--primary-light) 90%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+    }
+
+    .hero-subtitle {
+      font-size: clamp(1rem, 2vw, 1.25rem);
+      color: var(--text-muted);
+      max-width: 650px;
+      margin: 0 auto 2.5rem auto;
+      font-weight: 400;
+    }
+
+    .hero-ctas {
+      display: flex;
+      justify-content: center;
+      gap: 1rem;
+      margin-bottom: 4rem;
+      flex-wrap: wrap;
+    }
+
+    /* Mockup window styles */
+    .mockup-container {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 0 1rem;
+    }
+
+    .mockup {
+      border-radius: 1rem;
+      overflow: hidden;
+      aspect-ratio: 16/10;
+      box-shadow: 0 20px 50px rgba(0, 0, 0, 0.08);
+      position: relative;
+    }
+
+    .mockup-header {
+      height: 40px;
+      background: #f1f5f9;
+      border-bottom: 1px solid #e2e8f0;
+      display: flex;
+      align-items: center;
+      padding: 0 1rem;
+      gap: 0.5rem;
+    }
+
+    .dot {
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+    }
+    .dot-red { background: #f87171; }
+    .dot-yellow { background: #fbbf24; }
+    .dot-green { background: #34d399; }
+
+    .mockup-address {
+      flex: 1;
+      height: 24px;
+      background: white;
+      border: 1px solid #e2e8f0;
+      border-radius: 6px;
+      margin-left: 2rem;
+      display: flex;
+      align-items: center;
+      padding: 0 0.75rem;
+      font-size: 0.75rem;
+      color: var(--text-muted);
+      font-family: var(--font-mono);
+      gap: 0.4rem;
+    }
+
+    .mockup-address i {
+      font-size: 0.7rem;
+      color: var(--accent);
+    }
+
+    .mockup-body {
+      height: calc(100% - 40px);
+      background: white;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 2rem;
+      position: relative;
+    }
+
+    /* CSS Animated Transfer Diagram */
+    .animation-panel {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6rem;
+      width: 100%;
+      max-width: 500px;
+    }
+
+    .device-node {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 0.5rem;
+      z-index: 2;
+    }
+
+    .device-icon {
+      width: 64px;
+      height: 64px;
+      border-radius: 1.25rem;
+      background: var(--primary-glow);
+      border: 1.5px solid var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+    }
+
+    .device-node p {
+      font-size: 0.8rem;
+      font-weight: 600;
+      color: var(--text);
+      font-family: var(--font-mono);
+    }
+
+    .transfer-line-container {
+      position: relative;
+      flex: 1;
+      height: 2px;
+      background: var(--panel-border);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .packet {
+      position: absolute;
+      width: 14px;
+      height: 14px;
+      border-radius: 4px;
+      background: var(--primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: white;
+      box-shadow: 0 2px 8px var(--primary-glow);
+      animation: flow 2.5s infinite linear;
+    }
+
+    .packet i {
+      font-size: 0.55rem;
+    }
+
+    .channel-badge {
+      position: absolute;
+      top: -20px;
+      font-size: 0.65rem;
+      font-weight: 700;
+      color: var(--primary);
+      background: var(--bg);
+      padding: 2px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--panel-border);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Feature Highlights Section */
+    .features {
+      padding: 6rem 0;
+    }
+
+    .section-title {
+      text-align: center;
+      max-width: 600px;
+      margin: 0 auto 4rem auto;
+    }
+
+    .section-title h2 {
+      font-size: clamp(1.8rem, 3.5vw, 2.5rem);
+      font-weight: 800;
+      letter-spacing: -1px;
+      color: var(--text);
+      margin-bottom: 1rem;
+    }
+
+    .section-title p {
+      color: var(--text-muted);
+      font-size: 1rem;
+    }
+
+    .feature-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+      gap: 1.5rem;
+    }
+
+    .feature-card {
+      border-radius: 1.25rem;
+      padding: 2rem;
+      transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      position: relative;
+      overflow: hidden;
+    }
+
+    .feature-card::before {
+      content: '';
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 4px;
+      background: transparent;
+      transition: background-color 0.25s ease;
+    }
+
+    .feature-card:hover {
+      transform: translateY(-4px);
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.05);
+      border-color: var(--primary-light);
+    }
+
+    .feature-card:hover::before {
+      background: var(--primary);
+    }
+
+    .feature-icon-wrapper {
+      width: 44px;
+      height: 44px;
+      border-radius: 0.75rem;
+      background: var(--primary-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      margin-bottom: 1.5rem;
+    }
+
+    .feature-card h3 {
+      font-size: 1.15rem;
+      font-weight: 700;
+      margin-bottom: 0.75rem;
+      color: var(--text);
+    }
+
+    .feature-card p {
+      font-size: 0.9rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    /* Zero-Knowledge Architecture Section */
+    .architecture {
+      padding: 6rem 0;
+      background: hsla(136, 40%, 94%, 0.4);
+      border-top: 1px solid var(--panel-border);
+      border-bottom: 1px solid var(--panel-border);
+    }
+
+    .arch-container {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4rem;
+      align-items: center;
+    }
+
+    @media (max-width: 768px) {
+      .arch-container {
+        grid-template-columns: 1fr;
+        gap: 2.5rem;
+      }
+    }
+
+    .arch-text h3 {
+      font-size: 1.75rem;
+      font-weight: 800;
+      color: var(--text);
+      margin-bottom: 1rem;
+      letter-spacing: -0.5px;
+    }
+
+    .arch-text p {
+      color: var(--text-muted);
+      font-size: 0.95rem;
+      margin-bottom: 1.5rem;
+      line-height: 1.7;
+    }
+
+    .arch-step {
+      display: flex;
+      gap: 1rem;
+      margin-bottom: 1.25rem;
+    }
+
+    .arch-step-num {
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      background: var(--primary);
+      color: white;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 0.75rem;
+      font-weight: 700;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+
+    .arch-step-text h4 {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: var(--text);
+      margin-bottom: 0.25rem;
+    }
+
+    .arch-step-text p {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      margin: 0;
+    }
+
+    .arch-diagram {
+      padding: 2rem;
+      border-radius: 1.5rem;
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .url-bar {
+      background: white;
+      border-radius: 8px;
+      padding: 0.75rem 1rem;
+      border: 1px solid var(--panel-border);
+      word-break: break-all;
+    }
+
+    .url-base {
+      color: var(--text-muted);
+    }
+
+    .url-hash {
+      color: var(--primary);
+      font-weight: 700;
+      background: var(--primary-glow);
+      padding: 2px 4px;
+      border-radius: 4px;
+    }
+
+    .network-shield {
+      border: 1.5px dashed var(--panel-border);
+      border-radius: 8px;
+      padding: 1rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+    }
+
+    .shield-badge {
+      background: #f87171;
+      color: white;
+      padding: 2px 8px;
+      border-radius: 4px;
+      font-size: 0.6rem;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+
+    .server-data {
+      border: 1px solid var(--panel-border);
+      border-radius: 8px;
+      padding: 1rem;
+      background: #fafafa;
+    }
+
+    .data-row {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 0.4rem;
+    }
+    .data-row:last-child { margin-bottom: 0; }
+    
+    .data-key { color: var(--text-muted); }
+    .data-val { color: var(--text); font-weight: 600; }
+
+    /* Download Center Section */
+    .download {
+      padding: 6rem 0;
+    }
+
+    .download-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 1.5rem;
+      margin-bottom: 3rem;
+    }
+
+    .download-card {
+      border-radius: 1.25rem;
+      padding: 2rem;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .download-icon-wrapper {
+      width: 56px;
+      height: 56px;
+      border-radius: 1rem;
+      background: var(--primary-glow);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--primary);
+      margin-bottom: 1.5rem;
+    }
+
+    .download-card h3 {
+      font-size: 1.2rem;
+      font-weight: 700;
+      margin-bottom: 0.5rem;
+    }
+
+    .download-card .meta {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      margin-bottom: 1.5rem;
+    }
+
+    .download-actions {
+      display: flex;
+      flex-direction: column;
+      gap: 0.75rem;
+      width: 100%;
+      margin-top: auto;
+    }
+
+    .download-actions .btn {
+      width: 100%;
+    }
+
+    .portable-note {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+      text-align: center;
+      max-width: 700px;
+      margin: 2rem auto 0 auto;
+      line-height: 1.6;
+    }
+
+    /* FAQ Section */
+    .faq {
+      padding: 6rem 0;
+      background: #fafafa;
+      border-top: 1px solid var(--panel-border);
+    }
+
+    .faq-container {
+      max-width: 750px;
+      margin: 0 auto;
+      display: flex;
+      flex-direction: column;
+      gap: 1rem;
+    }
+
+    .faq-item {
+      border-radius: 0.75rem;
+      border: 1px solid var(--panel-border);
+      background: white;
+      overflow: hidden;
+      transition: all 0.2s ease;
+    }
+
+    .faq-question {
+      padding: 1.25rem 1.5rem;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      cursor: pointer;
+      font-weight: 600;
+      font-size: 0.95rem;
+      user-select: none;
+    }
+
+    .faq-question i {
+      transition: transform 0.2s ease;
+      color: var(--primary);
+    }
+
+    .faq-answer {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+      background: #fcfcfc;
+    }
+
+    .faq-answer-content {
+      padding: 0 1.5rem 1.25rem 1.5rem;
+      font-size: 0.88rem;
+      color: var(--text-muted);
+      line-height: 1.6;
+    }
+
+    .faq-item.active {
+      border-color: var(--primary);
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .faq-item.active .faq-question i {
+      transform: rotate(180deg);
+    }
+
+    .faq-item.active .faq-answer {
+      max-height: 200px; /* arbitrary height to slide down */
+    }
+
+    /* Footer */
+    footer {
+      background: white;
+      border-top: 1px solid var(--panel-border);
+      padding: 3rem 0;
+      text-align: center;
+    }
+
+    .footer-links {
+      display: flex;
+      justify-content: center;
+      gap: 2rem;
+      list-style: none;
+      margin-bottom: 1.5rem;
+    }
+
+    .footer-links a {
+      text-decoration: none;
+      color: var(--text-muted);
+      font-size: 0.85rem;
+      font-weight: 500;
+    }
+
+    .footer-links a:hover {
+      color: var(--primary);
+    }
+
+    footer p {
+      font-size: 0.8rem;
+      color: var(--text-muted);
+    }
+
+    /* Keyframes */
+    @keyframes flow {
+      0% {
+        left: 0%;
+        transform: scale(0.8);
+        opacity: 0;
+      }
+      15% {
+        opacity: 1;
+      }
+      85% {
+        opacity: 1;
+      }
+      100% {
+        left: 100%;
+        transform: scale(0.8) translateX(-100%);
+        opacity: 0;
+      }
+    }
+
+    @keyframes pulse {
+      0%, 100% { transform: scale(1); opacity: 1; }
+      50% { transform: scale(1.08); opacity: 0.9; }
+    }
+
+    @keyframes blink {
+      0%, 100% { opacity: 1; transform: scale(1); }
+      50% { opacity: 0.3; transform: scale(0.8); }
+    }
+
+    /* Responsive adjustments */
+    @media (max-width: 600px) {
+      .hero-ctas .btn {
+        width: 100%;
+      }
+      .nav-links {
+        display: none;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Floating Navigation -->
+  <header id="navbar">
+    <div class="container nav-container">
+      <a href="#" class="logo">
+        <i data-lucide="send"></i>
+        <span>SendFiles P2P</span>
+      </a>
+      <ul class="nav-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#download">Download</a></li>
+        <li><a href="#faq">FAQ</a></li>
+        <li><a href="https://github.com/zihaaaad/SendFiles" class="btn btn-secondary"><i data-lucide="github"></i> Repository</a></li>
+      </ul>
+    </div>
+  </header>
+
+  <!-- Hero Banner -->
+  <section class="hero">
+    <div class="container">
+      <div class="hero-badge">
+        <span></span> v1.0.0 Stable Release
+      </div>
+      <h1>Direct, Fast, and <span>Zero-Knowledge</span> Peer-to-Peer File Sharing</h1>
+      <p class="hero-subtitle">
+        Share files of any size directly from device to device. Zero configuration, completely local, E2E encrypted, and bypasses browser memory constraints.
+      </p>
+      <div class="hero-ctas">
+        <a href="https://github.com/zihaaaad/SendFiles/releases" class="btn btn-primary"><i data-lucide="download"></i> Download Executables</a>
+        <a href="https://github.com/zihaaaad/SendFiles" class="btn btn-secondary"><i data-lucide="github"></i> View Source Code</a>
+      </div>
+      
+      <!-- CSS Animated App Mockup -->
+      <div class="mockup-container">
+        <div class="mockup glass">
+          <div class="mockup-header">
+            <span class="dot dot-red"></span>
+            <span class="dot dot-yellow"></span>
+            <span class="dot dot-green"></span>
+            <div class="mockup-address">
+              <i data-lucide="shield-check"></i> https://localhost:3001
+            </div>
+          </div>
+          <div class="mockup-body">
+            <div class="animation-panel">
+              <div class="device-node">
+                <div class="device-icon"><i data-lucide="laptop"></i></div>
+                <p>Sender</p>
+              </div>
+              <div class="transfer-line-container">
+                <span class="channel-badge">Direct WebRTC</span>
+                <div class="packet"><i data-lucide="lock"></i></div>
+              </div>
+              <div class="device-node">
+                <div class="device-icon"><i data-lucide="smartphone"></i></div>
+                <p>Receiver</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Feature Grid -->
+  <section id="features" class="features">
+    <div class="container">
+      <div class="section-title">
+        <h2>Engineered for Speed & Security</h2>
+        <p>A unified hybrid transfer protocol built for seamless operation in online, cloud-scale, and isolated offline LAN environments.</p>
+      </div>
+      <div class="feature-grid">
+        <!-- Feature 1 -->
+        <div class="feature-card glass">
+          <div class="feature-icon-wrapper"><i data-lucide="wifi"></i></div>
+          <h3>Direct Beam (Instant P2P)</h3>
+          <p>Devices on the same network discover each other automatically based on shared IP mapping. Connect and stream files in seconds over local Wi-Fi with no configuration.</p>
+        </div>
+        <!-- Feature 2 -->
+        <div class="feature-card glass">
+          <div class="feature-icon-wrapper"><i data-lucide="shield-alert"></i></div>
+          <h3>Zero-Knowledge Security</h3>
+          <p>Files are encrypted chunk-by-chunk in-browser using AES-256-GCM. The decryption key stays inside the URL hash fragment (#), which is never sent to the server.</p>
+        </div>
+        <!-- Feature 3 -->
+        <div class="feature-card glass">
+          <div class="feature-icon-wrapper"><i data-lucide="database"></i></div>
+          <h3>IndexedDB Buffering</h3>
+          <p>Large files (10GB+) will exhaust browser heap memory and crash the tab. We buffer chunks directly to client disk storage via IndexedDB to enable infinite file size transfers.</p>
+        </div>
+        <!-- Feature 4 -->
+        <div class="feature-card glass">
+          <div class="feature-icon-wrapper"><i data-lucide="download-cloud"></i></div>
+          <h3>SW Streaming assembly</h3>
+          <p>A browser Service Worker intercepts downloads and streams chunks from IndexedDB directly to the browser download manager in real-time, bypassing RAM heap exhaustion.</p>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Security Architecture -->
+  <section id="security" class="architecture">
+    <div class="container">
+      <div class="arch-container">
+        <div class="arch-text">
+          <h3>Symmetric End-to-End Cryptography</h3>
+          <p>SendFiles protects your privacy with a zero-knowledge architecture. No unencrypted data or keys ever touch the network or server.</p>
+          
+          <div class="arch-step">
+            <div class="arch-step-num">1</div>
+            <div class="arch-step-text">
+              <h4>Client-Side Key Generation</h4>
+              <p>An AES-256-GCM key is generated directly in your browser. Files are encrypted chunk-by-chunk before sending.</p>
+            </div>
+          </div>
+          <div class="arch-step">
+            <div class="arch-step-num">2</div>
+            <div class="arch-step-text">
+              <h4>Hash-Bound Decryption Key</h4>
+              <p>The key is placed in the URL hash (#). Browsers strictly keep hash segments client-side, meaning the key is never sent to the signaling server.</p>
+            </div>
+          </div>
+          <div class="arch-step">
+            <div class="arch-step-num">3</div>
+            <div class="arch-step-text">
+              <h4>Salted PBKDF2 Password Lock</h4>
+              <p>Locker PIN codes are stretched client-side using PBKDF2 with 600,000 iterations of SHA-256, protecting against brute-force attacks.</p>
+            </div>
+          </div>
+        </div>
+        <div class="arch-diagram glass">
+          <div>// Zero-Knowledge Key Isolation</div>
+          <div class="url-bar">
+            <span class="url-base">https://zihaaaad.github.io/SendFiles/#/locker/7AF92D</span><span class="url-hash">#key=7e9f3b8a1c...</span>
+          </div>
+          <div style="color: var(--text-muted);">// Browsers never send hash (#) to the server.</div>
+          
+          <div class="network-shield">
+            <span><i data-lucide="shield" style="color: var(--primary);"></i> Network Gateway</span>
+            <span class="shield-badge">Key Blocked</span>
+          </div>
+          
+          <div class="server-data">
+            <div>// Express Server Received Parameters:</div>
+            <div class="data-row">
+              <span class="data-key">RoomID:</span>
+              <span class="data-val">"7AF92D"</span>
+            </div>
+            <div class="data-row">
+              <span class="data-key">File Count:</span>
+              <span class="data-val">3</span>
+            </div>
+            <div class="data-row">
+              <span class="data-key">DecryptionKey:</span>
+              <span class="data-val" style="color: #f87171;">null (Unknown to Server)</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Download Center -->
+  <section id="download" class="download">
+    <div class="container">
+      <div class="section-title">
+        <h2>Download SendFiles Executables</h2>
+        <p>Choose between single-file standalone binaries or portable signed archives designed to bypass strict enterprise security boundaries.</p>
+      </div>
+      
+      <div class="download-grid">
+        <!-- Windows -->
+        <div class="download-card glass">
+          <div class="download-icon-wrapper"><i data-lucide="monitor"></i></div>
+          <h3>Windows Platform</h3>
+          <p class="meta">Windows 10/11 x64 architecture</p>
+          <div class="download-actions">
+            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-windows.exe" class="btn btn-primary"><i data-lucide="download"></i> Standalone .EXE</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-portable-windows.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (WDAC Bypass)</a>
+          </div>
+        </div>
+        <!-- Linux -->
+        <div class="download-card glass">
+          <div class="download-icon-wrapper"><i data-lucide="terminal"></i></div>
+          <h3>Linux Distribution</h3>
+          <p class="meta">Ubuntu/Debian/CentOS x64 system</p>
+          <div class="download-actions">
+            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-linux" class="btn btn-primary"><i data-lucide="download"></i> Standalone Binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-portable-linux.tar.gz" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .TAR.GZ</a>
+          </div>
+        </div>
+        <!-- macOS -->
+        <div class="download-card glass">
+          <div class="download-icon-wrapper"><i data-lucide="laptop-2"></i></div>
+          <h3>macOS Platform</h3>
+          <p class="meta">Intel & Apple Silicon (M1/M2/M3) chips</p>
+          <div class="download-actions">
+            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-macos-silicon" class="btn btn-primary"><i data-lucide="download"></i> Apple Silicon Binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-portable-macos.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (Signed)</a>
+          </div>
+        </div>
+      </div>
+      
+      <p class="portable-note">
+        <strong>💡 Antivirus & Windows Defender Bypass</strong>: Standard standalone executables are compiled wrappers that might trigger corporate security warnings (e.g. SmartScreen). The <strong>Portable Signed Packages</strong> contain the officially signed Node.js binary from the Node Foundation and run the self-contained app code via a helper script, completely bypassing execution locks.
+      </p>
+    </div>
+  </section>
+
+  <!-- Technical FAQ -->
+  <section id="faq" class="faq">
+    <div class="container">
+      <div class="section-title">
+        <h2>Technical FAQ</h2>
+        <p>Have questions about SendFiles' design, security, or network routing? Find answers here.</p>
+      </div>
+      
+      <div class="faq-container">
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Does the server see my files or passwords?</span>
+            <i data-lucide="chevron-down"></i>
+          </div>
+          <div class="faq-answer">
+            <div class="faq-answer-content">
+              No. All encryption keys are stored inside the URL hash (#), which remains local in your browser and is never sent to the network. Passwords are salted and stretched client-side using 600,000 iterations of PBKDF2 before the hash is sent, ensuring the server has zero knowledge of your plain text passcode or raw file contents.
+            </div>
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>How does the local network auto-discovery work?</span>
+            <i data-lucide="chevron-down"></i>
+          </div>
+          <div class="faq-answer">
+            <div class="faq-answer-content">
+              When you load the app, the client pings the server to determine its public WAN IP address. Senders and receivers sharing the same public IP are grouped into a secure "neighborhood". For local networks, they automatically exchange signaling offers to establish a direct LAN peer connection.
+            </div>
+          </div>
+        </div>
+        
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>What happens if direct P2P connections are blocked?</span>
+            <i data-lucide="chevron-down"></i>
+          </div>
+          <div class="faq-answer">
+            <div class="faq-answer-content">
+              In restrictive network configurations (like double NATs or symmetric enterprise firewalls) where WebRTC fails, the engine falls back to a WebSocket chunk relay. Chunks are encrypted, packaged using custom binary framing (saving 33% overhead over Base64), and securely routed through the signaling gateway.
+            </div>
+          </div>
+        </div>
+
+        <div class="faq-item">
+          <div class="faq-question">
+            <span>Can this application scale horizontally?</span>
+            <i data-lucide="chevron-down"></i>
+          </div>
+          <div class="faq-answer">
+            <div class="faq-answer-content">
+              Yes. The backend features fully integrated Redis clustering. Active room mappings and WebSocket signaling packets are replicated across server nodes using Redis Pub/Sub channels, allowing you to run a cluster of SendFiles instances behind a load balancer.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer>
+    <div class="container">
+      <ul class="footer-links">
+        <li><a href="#features">Features</a></li>
+        <li><a href="#security">Security</a></li>
+        <li><a href="#download">Download</a></li>
+        <li><a href="https://github.com/zihaaaad/SendFiles">GitHub Repo</a></li>
+      </ul>
+      <p>© 2026 SendFiles P2P. Made with love for speed & security.</p>
+    </div>
+  </footer>
+
+  <script>
+    // Initialize Lucide Icons
+    lucide.createIcons();
+
+    // Navbar scroll effect
+    window.addEventListener('scroll', () => {
+      const navbar = document.getElementById('navbar');
+      if (window.scrollY > 20) {
+        navbar.classList.add('scrolled');
+      } else {
+        navbar.classList.remove('scrolled');
+      }
+    });
+
+    // FAQ Accordion toggles
+    const faqItems = document.querySelectorAll('.faq-item');
+    faqItems.forEach(item => {
+      const question = item.querySelector('.faq-question');
+      question.addEventListener('click', () => {
+        const isActive = item.classList.contains('active');
+        
+        // Close all items
+        faqItems.forEach(i => i.classList.remove('active'));
+        
+        // Open clicked item if it wasn't active
+        if (!isActive) {
+          item.classList.add('active');
+        }
+      });
+    });
+  </script>
+</body>
+</html>
