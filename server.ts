@@ -58,7 +58,7 @@ function ipsMatchForDiscovery(ipA: string, ipB: string): boolean {
 const app = express();
 
 // Enable proxy trust to get client IP via req.ip when deployed behind reverse proxies
-app.set("trust proxy", process.env.TRUST_PROXY === "true" || process.env.TRUST_PROXY === "1" || true);
+app.set("trust proxy", process.env.TRUST_PROXY === "true" || process.env.TRUST_PROXY === "1");
 
 // Secure helper to resolve client IP and prevent spoofing
 function getClientIp(req: any): string {
