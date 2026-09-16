@@ -51,32 +51,64 @@ self.addEventListener("fetch", (event) => {
       });
     };
 
-    const stream = new ReadableStream({
-      async start(controller) {
-        try {
-          const db = await openDB();
-          for (let i = 0; i < totalChunks; i++) {
-            let chunk = await getChunk(db, roomId, fileIndex, i);
-            
-            // Retry mechanism if the chunk is still writing (unlikely but safe)
-            let retries = 0;
-            while (!chunk && retries < 5) {
-              await new Promise((resolve) => setTimeout(resolve, 500));
-              chunk = await getChunk(db, roomId, fileIndex, i);
-              retries++;
-            }
+    // Tells the page this stream is done reading IndexedDB, so it can safely
+    // purge the cached chunks. Without this the page cleared the store while
+    // the browser was still pulling bytes out of it.
+    const notifySettled = async (status, detail) => {
+      const clients = await self.clients.matchAll({ includeUncontrolled: true });
+      for (const client of clients) {
+        client.postMessage({
+          type: "download-stream-settled",
+          roomId,
+          fileIndex,
+          status,
+          detail: detail || null
+        });
+      }
+    };
 
-            if (!chunk) {
-              throw new Error(`Missing chunk index ${i} during streaming assembly`);
-            }
-            
-            controller.enqueue(new Uint8Array(chunk));
+    // pull() streams lazily, so memory stays flat regardless of file size.
+    let nextChunkIndex = 0;
+    let db = null;
+
+    const stream = new ReadableStream({
+      async start() {
+        db = await openDB();
+      },
+      async pull(controller) {
+        try {
+          if (nextChunkIndex >= totalChunks) {
+            controller.close();
+            await notifySettled("complete");
+            return;
           }
-          controller.close();
+
+          const i = nextChunkIndex;
+          let chunk = await getChunk(db, roomId, fileIndex, i);
+
+          // Retry mechanism if the chunk is still writing (unlikely but safe)
+          let retries = 0;
+          while (!chunk && retries < 5) {
+            await new Promise((resolve) => setTimeout(resolve, 500));
+            chunk = await getChunk(db, roomId, fileIndex, i);
+            retries++;
+          }
+
+          if (!chunk) {
+            throw new Error(`Missing chunk index ${i} during streaming assembly`);
+          }
+
+          controller.enqueue(new Uint8Array(chunk));
+          nextChunkIndex++;
         } catch (err) {
           console.error("Streaming download failed:", err);
           controller.error(err);
+          await notifySettled("error", String(err && err.message ? err.message : err));
         }
+      },
+      async cancel(reason) {
+        // The user cancelled the save dialog or navigated away.
+        await notifySettled("cancelled", String(reason || ""));
       }
     });
 

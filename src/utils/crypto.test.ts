@@ -11,6 +11,9 @@ import {
   encryptChunk,
   decryptChunk,
   hashPassword,
+  generateKeyAgreementPair,
+  deriveSharedKey,
+  computeSafetyCode,
 } from "./crypto";
 
 beforeAll(() => {
@@ -79,5 +82,61 @@ describe("SendFiles Cryptography Module", () => {
     const result4 = await hashPassword("DifferentPassword456", result1.salt);
     expect(result4.hash).not.toBe(result1.hash);
     expect(result4.salt).toBe(result1.salt);
+  });
+});
+
+describe("Direct Beam key agreement", () => {
+  it("derives an identical shared key on both sides", async () => {
+    const alice = await generateKeyAgreementPair();
+    const bob = await generateKeyAgreementPair();
+
+    const aliceKey = await deriveSharedKey(alice.keyPair.privateKey, bob.publicKeyHex);
+    const bobKey = await deriveSharedKey(bob.keyPair.privateKey, alice.publicKeyHex);
+
+    const aliceHex = await exportKeyToHex(aliceKey);
+    const bobHex = await exportKeyToHex(bobKey);
+    expect(aliceHex).toBe(bobHex);
+    expect(aliceHex).toHaveLength(64);
+  });
+
+  it("produces an uncompressed P-256 public key", async () => {
+    const pair = await generateKeyAgreementPair();
+    expect(pair.publicKeyHex).toHaveLength(130);
+    expect(pair.publicKeyHex.startsWith("04")).toBe(true);
+  });
+
+  it("rejects a malformed peer public key", async () => {
+    const pair = await generateKeyAgreementPair();
+    await expect(deriveSharedKey(pair.keyPair.privateKey, "deadbeef")).rejects.toThrow();
+  });
+
+  it("shows a matching 6-digit safety code to both peers, and a different one to a third party", async () => {
+    const alice = await generateKeyAgreementPair();
+    const bob = await generateKeyAgreementPair();
+    const mallory = await generateKeyAgreementPair();
+
+    const aliceKey = await deriveSharedKey(alice.keyPair.privateKey, bob.publicKeyHex);
+    const bobKey = await deriveSharedKey(bob.keyPair.privateKey, alice.publicKeyHex);
+    const malloryKey = await deriveSharedKey(mallory.keyPair.privateKey, alice.publicKeyHex);
+
+    const aliceCode = await computeSafetyCode(aliceKey);
+    const bobCode = await computeSafetyCode(bobKey);
+    const malloryCode = await computeSafetyCode(malloryKey);
+
+    expect(aliceCode).toMatch(/^[0-9]{6}$/);
+    expect(aliceCode).toBe(bobCode);
+    expect(malloryCode).not.toBe(aliceCode);
+  });
+
+  it("encrypts and decrypts a chunk under the agreed key", async () => {
+    const alice = await generateKeyAgreementPair();
+    const bob = await generateKeyAgreementPair();
+    const aliceKey = await deriveSharedKey(alice.keyPair.privateKey, bob.publicKeyHex);
+    const bobKey = await deriveSharedKey(bob.keyPair.privateKey, alice.publicKeyHex);
+
+    const payload = new Uint8Array([1, 2, 3, 4, 5, 6, 7, 8]);
+    const sealed = await encryptChunk(aliceKey, payload.buffer);
+    const opened = await decryptChunk(bobKey, sealed);
+    expect(new Uint8Array(opened)).toEqual(payload);
   });
 });

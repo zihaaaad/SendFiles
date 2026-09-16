@@ -1,6 +1,6 @@
 /**
  * @license
- * SPDX-License-Identifier: Apache-2.5
+ * SPDX-License-Identifier: Apache-2.0
  */
 
 import React, { useState, useEffect, useRef } from "react";
@@ -40,6 +40,7 @@ export default function ReceptionPanel({
   const [verifying, setVerifying] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [useVerified, setUseVerified] = useState(isVerified);
+  const [accessToken, setAccessToken] = useState("");
 
   // Transfer State Managers
   const [transferState, setTransferState] = useState<TransferState>("idle");
@@ -64,13 +65,17 @@ export default function ReceptionPanel({
     try {
       const result = await hashPassword(password, roomDetails.passwordSalt);
       const pHash = result.hash;
-      const res = await fetch(`/api/rooms/${roomId}/verify-password`, {
+      const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/verify-password`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ passwordHash: pHash }),
       });
 
       if (res.ok) {
+        // The server now gates the signalling room on this token, so the
+        // passcode is enforced server-side rather than on the honour system.
+        const data = await res.json();
+        setAccessToken(data.accessToken || "");
         setUseVerified(true);
         onVerificationSuccess();
       } else {
@@ -84,13 +89,42 @@ export default function ReceptionPanel({
     }
   };
 
-  // Launch receiver engine once verified
+  // A locker with no passcode still needs an access token to join its room.
   useEffect(() => {
-    if (!useVerified) return;
-    
+    if (roomDetails.hasPassword || accessToken) return;
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/rooms/${encodeURIComponent(roomId)}/access`, { method: "POST" });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          if (!cancelled) setErrorMsg(err.error || "This locker is no longer available.");
+          return;
+        }
+        const data = await res.json();
+        if (!cancelled) {
+          setAccessToken(data.accessToken || "");
+          setUseVerified(true);
+        }
+      } catch {
+        if (!cancelled) setErrorMsg("Failed to reach the locker server.");
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [roomId, roomDetails.hasPassword, accessToken]);
+
+  // Launch receiver engine once verified and holding a token
+  useEffect(() => {
+    if (!useVerified || !accessToken) return;
+
     const receiver = new P2PReceiver({
       roomId,
-      encryptionKeyHex
+      encryptionKeyHex,
+      accessToken
     });
     receiverRef.current = receiver;
 
@@ -111,7 +145,7 @@ export default function ReceptionPanel({
     return () => {
       receiver.stop();
     };
-  }, [useVerified, roomId, encryptionKeyHex]);
+  }, [useVerified, accessToken, roomId, encryptionKeyHex]);
 
   // Security Verification entry screen (Password Required)
   if (!useVerified && roomDetails.hasPassword) {
