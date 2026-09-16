@@ -27,8 +27,14 @@ import {
   ArrowLeft
 } from "lucide-react";
 import { getWebSocketURL, formatSpeed, fetchIceConfig } from "./utils/webrtc-helper";
-import { generateSecretKey, exportKeyToHex } from "./utils/crypto";
-import { P2PSender, P2PReceiver, decodeBinaryChunk } from "./utils/p2p-engine";
+import {
+  generateSecretKey,
+  exportKeyToHex,
+  generateKeyAgreementPair,
+  deriveSharedKey,
+  computeSafetyCode,
+} from "./utils/crypto";
+import { P2PSender, P2PReceiver, decodeBinaryChunk, generateClientId } from "./utils/p2p-engine";
 import { RoomDetails, TransferProgress } from "./types";
 import QRCode from "qrcode";
 import { clearAllChunksFromDB } from "./utils/db";
@@ -57,7 +63,6 @@ const ANIMALS = [
 interface DiscoveredPeer {
   peerId: string;
   name: string;
-  ip: string;
 }
 
 interface CreatedLocker {
@@ -92,10 +97,12 @@ export default function App() {
     return user;
   });
 
+  // Peer IDs are routing targets on a shared signalling server, so they are
+  // generated from the platform CSPRNG rather than Math.random().
   const [peerId] = useState<string>(() => {
     const stored = sessionStorage.getItem("filedrop_client_peer_id");
-    if (stored) return stored;
-    const newId = "peer_" + Math.random().toString(36).substring(2, 8);
+    if (stored && /^peer_[0-9a-f]{32}$/.test(stored)) return stored;
+    const newId = "peer_" + generateClientId();
     sessionStorage.setItem("filedrop_client_peer_id", newId);
     return newId;
   });
@@ -108,6 +115,7 @@ export default function App() {
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
   const [myPublicIp, setMyPublicIp] = useState<string>("Detecting public IP...");
   const [socketStatus, setSocketStatus] = useState<"connecting" | "online" | "offline">("connecting");
+  const [discoveryMode, setDiscoveryMode] = useState<"lan" | "strict" | "off">("lan");
   const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [networkIps, setNetworkIps] = useState<string[]>([]);
@@ -186,6 +194,8 @@ export default function App() {
     percent: number;
     speed: number;
     status: "idle" | "waiting-acceptance" | "transferring" | "success" | "declined" | "failed" | "canceled";
+    /** Six digits derived from the agreed key; must match on both devices. */
+    safetyCode: string | null;
   } | null>(null);
 
   const senderTransferRef = useRef<typeof senderTransfer>(null);
@@ -196,6 +206,8 @@ export default function App() {
   const directPcRef = useRef<RTCPeerConnection | null>(null);
   const directChannelRef = useRef<RTCDataChannel | null>(null);
   const directConnectTimeoutRef = useRef<number | null>(null);
+  // Ephemeral ECDH material for the in-flight Direct Beam transfer.
+  const directKeyPairRef = useRef<{ keyPair: CryptoKeyPair; publicKeyHex: string } | null>(null);
 
   // Direct Beam Receiver State
   const [receiverTransfer, setReceiverTransfer] = useState<{
@@ -207,6 +219,8 @@ export default function App() {
     status: "offered" | "transferring" | "success" | "failed";
     chunksReceived: number;
     totalChunks: number;
+    senderPublicKey?: string;
+    safetyCode: string | null;
   } | null>(null);
 
   // 4. Encrypted Locker States
@@ -341,12 +355,16 @@ export default function App() {
 
           switch (type) {
             case "peers-list":
+              // The server now scopes this list to peers this client is allowed
+              // to discover, so no client-side IP filtering is needed.
               if (message.peers) {
-                const filtered = message.peers.filter((p: any) => p.peerId !== peerId);
-                setPeers(filtered);
+                setPeers(message.peers.filter((p: any) => p.peerId !== peerId));
               }
               if (message.yourIp) {
                 setMyPublicIp(message.yourIp);
+              }
+              if (message.discoveryMode) {
+                setDiscoveryMode(message.discoveryMode);
               }
               break;
 
@@ -359,7 +377,9 @@ export default function App() {
                 percent: 0,
                 status: "offered",
                 chunksReceived: 0,
-                totalChunks: payload.totalChunks
+                totalChunks: payload.totalChunks,
+                senderPublicKey: payload.publicKey,
+                safetyCode: null
               });
               break;
 
@@ -367,11 +387,16 @@ export default function App() {
               if (payload.accepted) {
                 const currentSenderTransfer = senderTransferRef.current;
                 if (currentSenderTransfer && activeSenderFileRef.current) {
-                  setupDirectSenderWebRTC(currentSenderTransfer.peerId, activeSenderFileRef.current);
+                  await startDirectSend(
+                    currentSenderTransfer.peerId,
+                    activeSenderFileRef.current,
+                    payload.publicKey
+                  );
                 }
               } else {
                 setSenderTransfer(prev => prev ? { ...prev, status: "declined" } : null);
                 activeSenderFileRef.current = null;
+                directKeyPairRef.current = null;
               }
               break;
 
@@ -422,13 +447,13 @@ export default function App() {
     setProfileName(newName);
   };
 
-  const handleSelectFile = (file: File) => {
+  const handleSelectFile = async (file: File) => {
     if (!selectedRecipientId) return;
-    
+
     const count = Math.ceil(file.size / CHUNK_SIZE);
     activeSenderFileRef.current = file;
     const recipient = peers.find(p => p.peerId === selectedRecipientId);
-    
+
     setSenderTransfer({
       peerId: selectedRecipientId,
       peerName: recipient?.name || "Device",
@@ -436,19 +461,33 @@ export default function App() {
       fileSize: file.size,
       percent: 0,
       speed: 0,
-      status: "waiting-acceptance"
+      status: "waiting-acceptance",
+      safetyCode: null
     });
 
-    sendSignal({
-      type: "incoming-file-offer",
-      targetPeerId: selectedRecipientId,
-      payload: {
-        fileName: file.name,
-        fileSize: file.size,
-        fileType: file.type || "application/octet-stream",
-        totalChunks: count
-      }
-    });
+    // Direct Beam has no shared link key, so both sides agree one over the
+    // signalling channel. The server only sees public keys, which keeps file
+    // bytes unreadable to it even when the transfer falls back to the relay.
+    try {
+      const pair = await generateKeyAgreementPair();
+      directKeyPairRef.current = pair;
+
+      sendSignal({
+        type: "incoming-file-offer",
+        targetPeerId: selectedRecipientId,
+        payload: {
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type || "application/octet-stream",
+          totalChunks: count,
+          publicKey: pair.publicKeyHex
+        }
+      });
+    } catch (err) {
+      console.error("Failed to start key agreement:", err);
+      setSenderTransfer(prev => (prev ? { ...prev, status: "failed" } : null));
+      activeSenderFileRef.current = null;
+    }
   };
 
   const cleanupDirectWebRTC = () => {
@@ -460,14 +499,36 @@ export default function App() {
       directReceiverRef.current.stop();
       directReceiverRef.current = null;
     }
+    directKeyPairRef.current = null;
   };
 
-  const setupDirectSenderWebRTC = async (recipientId: string, file: File) => {
-    setSenderTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
+  const startDirectSend = async (recipientId: string, file: File, peerPublicKey?: string) => {
+    const pair = directKeyPairRef.current;
+    if (!pair || !peerPublicKey) {
+      console.error("Direct Beam key agreement did not complete; refusing to send in the clear.");
+      setSenderTransfer(prev => prev ? { ...prev, status: "failed" } : null);
+      activeSenderFileRef.current = null;
+      return;
+    }
+
+    let sharedKey: CryptoKey;
+    let safetyCode: string;
+    try {
+      sharedKey = await deriveSharedKey(pair.keyPair.privateKey, peerPublicKey);
+      safetyCode = await computeSafetyCode(sharedKey);
+    } catch (err) {
+      console.error("Failed to derive the shared transfer key:", err);
+      setSenderTransfer(prev => prev ? { ...prev, status: "failed" } : null);
+      activeSenderFileRef.current = null;
+      return;
+    }
+
+    setSenderTransfer(prev => prev ? { ...prev, status: "transferring", safetyCode } : null);
 
     const sender = new P2PSender({
       targetPeerId: recipientId,
       files: [file],
+      cryptoKey: sharedKey,
       ws: wsRef.current,
       peerId: peerId
     });
@@ -501,18 +562,42 @@ export default function App() {
     await sender.start();
   };
 
-  const acceptIncomingOffer = () => {
+  const acceptIncomingOffer = async () => {
     if (!receiverTransfer) return;
-    setReceiverTransfer(prev => prev ? { ...prev, status: "transferring" } : null);
-    
+
+    if (!receiverTransfer.senderPublicKey) {
+      // An older sender that cannot negotiate a key would transfer in the
+      // clear over the relay; decline rather than downgrade silently.
+      console.error("Sender did not offer a key agreement; refusing the transfer.");
+      setReceiverTransfer(prev => prev ? { ...prev, status: "failed" } : null);
+      return;
+    }
+
+    let sharedKey: CryptoKey;
+    let safetyCode: string;
+    let publicKeyHex: string;
+    try {
+      const pair = await generateKeyAgreementPair();
+      publicKeyHex = pair.publicKeyHex;
+      sharedKey = await deriveSharedKey(pair.keyPair.privateKey, receiverTransfer.senderPublicKey);
+      safetyCode = await computeSafetyCode(sharedKey);
+    } catch (err) {
+      console.error("Failed to derive the shared transfer key:", err);
+      setReceiverTransfer(prev => prev ? { ...prev, status: "failed" } : null);
+      return;
+    }
+
+    setReceiverTransfer(prev => prev ? { ...prev, status: "transferring", safetyCode } : null);
+
     sendSignal({
       type: "file-offer-response",
       targetPeerId: receiverTransfer.peerId,
-      payload: { accepted: true }
+      payload: { accepted: true, publicKey: publicKeyHex }
     });
 
     const receiver = new P2PReceiver({
       senderPeerId: receiverTransfer.peerId,
+      sharedKey,
       ws: wsRef.current,
       peerId: peerId
     });
@@ -710,35 +795,10 @@ export default function App() {
     setTimeout(() => setCopiedLink(false), 2000);
   };
 
-  const isLocalIp = (ip: string): boolean => {
-    if (!ip) return false;
-    let cleanIp = ip;
-    if (ip.startsWith("::ffff:")) {
-      cleanIp = ip.substring(7);
-    }
-    if (cleanIp === "127.0.0.1" || cleanIp === "::1" || cleanIp === "localhost") {
-      return true;
-    }
-    if (cleanIp.startsWith("10.")) return true;
-    if (cleanIp.startsWith("192.168.")) return true;
-    if (cleanIp.startsWith("169.254.")) return true;
-    if (cleanIp.startsWith("172.")) {
-      const parts = cleanIp.split(".");
-      if (parts.length >= 2) {
-        const secondOctet = parseInt(parts[1], 10);
-        if (secondOctet >= 16 && secondOctet <= 31) return true;
-      }
-    }
-    if (cleanIp.toLowerCase().startsWith("fe80:") || 
-        cleanIp.toLowerCase().startsWith("fc00:") || 
-        cleanIp.toLowerCase().startsWith("fd00:")) {
-      return true;
-    }
-    return false;
-  };
-
-  const localPeers = peers.filter(p => p.ip === myPublicIp || (isLocalIp(p.ip) && isLocalIp(myPublicIp)));
-  const globalPeers = peers.filter(p => p.ip !== myPublicIp && !(isLocalIp(p.ip) && isLocalIp(myPublicIp)));
+  // The server decides who is discoverable and only sends peers this client may
+  // see, so every entry in `peers` is already in scope.
+  const localPeers = peers;
+  const globalPeers: DiscoveredPeer[] = [];
 
   const qrUrl = resolvedOrigin;
 
@@ -1133,6 +1193,19 @@ export default function App() {
 
                 {senderTransfer.status === "transferring" && (
                   <div className="space-y-3 py-1">
+                    {senderTransfer.safetyCode && (
+                      <div className="bg-[#265c34]/5 border border-[#265c34]/15 rounded-lg p-2.5 text-center select-none">
+                        <span className="text-[8px] font-mono text-[#265c34] uppercase tracking-widest font-bold block">
+                          Safety code
+                        </span>
+                        <span className="text-sm font-mono font-black text-slate-900 tracking-[0.3em] block mt-0.5">
+                          {senderTransfer.safetyCode}
+                        </span>
+                        <span className="text-[9px] text-slate-600 block mt-1 leading-snug">
+                          Should match the recipient's screen. If it differs, cancel the transfer.
+                        </span>
+                      </div>
+                    )}
                     <div className="space-y-1.5 font-mono text-[10px] text-slate-500">
                       <div className="flex justify-between font-bold">
                         <span>Speed: {formatSpeed(senderTransfer.speed)}</span>
@@ -1309,6 +1382,19 @@ export default function App() {
 
             {receiverTransfer.status === "transferring" && (
               <div className="space-y-2.5 py-0.5">
+                {receiverTransfer.safetyCode && (
+                  <div className="bg-[#265c34]/5 border border-[#265c34]/15 rounded-lg p-2.5 text-center select-none">
+                    <span className="text-[8px] font-mono text-[#265c34] uppercase tracking-widest font-bold block">
+                      Safety code
+                    </span>
+                    <span className="text-sm font-mono font-black text-slate-900 tracking-[0.3em] block mt-0.5">
+                      {receiverTransfer.safetyCode}
+                    </span>
+                    <span className="text-[9px] text-slate-600 block mt-1 leading-snug">
+                      Should match the sender's screen. If it differs, stop the transfer.
+                    </span>
+                  </div>
+                )}
                 <div className="flex justify-between items-center text-[9px] font-mono text-slate-500 select-none">
                   <span>Receiving...</span>
                   <span className="font-bold text-slate-900">{receiverTransfer.percent}%</span>

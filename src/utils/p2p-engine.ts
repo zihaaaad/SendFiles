@@ -10,6 +10,36 @@ import { calculateSpeedAndETA, getWebSocketURL, getIceConfig } from "./webrtc-he
 
 const CHUNK_SIZE = 1048576; // 1MB LAN-optimized chunking size
 
+// Pause sending once this much data is queued on the data channel, resume once
+// it drains to bufferedAmountLowThreshold.
+const BUFFER_HIGH_WATER_MARK = 1024 * 1024;
+const BUFFER_LOW_WATER_MARK = 65536;
+
+/**
+ * How long to let ICE negotiate before falling back to the WebSocket relay.
+ *
+ * The old value was 2s, which is fine on a LAN but shorter than a normal
+ * STUN-assisted handshake, so WAN transfers were pushed onto the slow relay
+ * path almost every time. We now wait longer and, crucially, only give up when
+ * ICE has actually stopped making progress.
+ */
+const ICE_NEGOTIATION_TIMEOUT_MS = 12000;
+
+/**
+ * Generates an unguessable client identifier.
+ *
+ * Peer IDs are routing targets on a shared signalling server, so the previous
+ * 6 characters of Math.random() (~31 bits, non-cryptographic) were weak enough
+ * to enumerate. This yields 128 bits from the platform CSPRNG.
+ */
+export function generateClientId(): string {
+  const bytes = new Uint8Array(16);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
 // ----------------------------------------------------
 // Binary Framing Protocol for high-performance WS relay
 // Format: [1-byte msgType] [1-byte targetLen] [N-bytes targetId] [1-byte senderLen] [M-bytes senderId] [4-bytes fileIndex] [4-bytes chunkIndex] [remaining payload]
@@ -137,6 +167,7 @@ export class P2PSender {
     isWaitingForAck: boolean;
   }>();
   private lastProgressUpdates = new Map<string, number>();
+  private negotiationTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   public onPeerStatusChange: (peerId: string, status: string) => void = () => {};
   public onProgressUpdate: (peerId: string, progress: TransferProgress) => void = () => {};
@@ -149,7 +180,7 @@ export class P2PSender {
     this.cryptoKey = options.cryptoKey || null;
     this.ws = options.ws || null;
     this.isExternalWs = !!options.ws;
-    this.peerId = options.peerId || "sender_" + Math.random().toString(36).substring(2, 6);
+    this.peerId = options.peerId || "sender_" + generateClientId();
   }
 
   public async start() {
@@ -162,7 +193,12 @@ export class P2PSender {
       return;
     }
 
-    const wsUrl = `${await getWebSocketURL()}?roomId=${this.roomId}&peerId=${this.peerId}&role=sender`;
+    const senderParams = new URLSearchParams({
+      roomId: this.roomId,
+      peerId: this.peerId,
+      role: "sender"
+    });
+    const wsUrl = `${await getWebSocketURL()}?${senderParams.toString()}`;
     this.onLogMessage(`Connecting to signaling gateway: ${this.roomId}`);
     this.ws = new WebSocket(wsUrl);
     this.ws.binaryType = "arraybuffer";
@@ -242,8 +278,14 @@ export class P2PSender {
     if (!this.isExternalWs) {
       this.ws?.close();
     }
-    for (const peerId of this.peers.keys()) {
+    // Snapshot the keys: cleanupPeer mutates the map being iterated.
+    for (const peerId of Array.from(this.peers.keys())) {
       this.cleanupPeer(peerId);
+    }
+    for (const transfer of this.activeTransfers.values()) {
+      // Releases any stream loop parked waiting on an ACK.
+      transfer.isTransferring = false;
+      transfer.isWaitingForAck = false;
     }
   }
 
@@ -276,16 +318,37 @@ export class P2PSender {
       }
     };
 
-    // Timeout: if connection doesn't succeed within 2 seconds, initiate relay fallback (Gigabit optimized LAN fallback speed)
-    setTimeout(() => {
-      if (!connected && this.peers.get(rxPeerId) === pc && pc.connectionState !== "connected") {
-        this.onLogMessage(`WebRTC connection negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
-        this.initiateRelayFallback(rxPeerId);
+    // Fall back to the relay only once ICE has had a realistic chance to
+    // complete. A connection still in "checking" is making progress, so we give
+    // it one more interval before giving up on the direct path.
+    const negotiationDeadline = setTimeout(() => {
+      if (connected || this.peers.get(rxPeerId) !== pc) return;
+      if (pc.connectionState === "connected") return;
+
+      const stillNegotiating =
+        pc.iceConnectionState === "checking" || pc.iceGatheringState === "gathering";
+      if (stillNegotiating) {
+        this.onLogMessage(`WebRTC still negotiating with [${rxPeerId}], allowing extra time...`);
+        setTimeout(() => {
+          if (!connected && this.peers.get(rxPeerId) === pc && pc.connectionState !== "connected") {
+            this.onLogMessage(`WebRTC negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
+            this.initiateRelayFallback(rxPeerId);
+          }
+        }, ICE_NEGOTIATION_TIMEOUT_MS);
+        return;
       }
-    }, 2000);
+
+      this.onLogMessage(`WebRTC connection negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
+      this.initiateRelayFallback(rxPeerId);
+    }, ICE_NEGOTIATION_TIMEOUT_MS);
+
+    this.negotiationTimers.set(rxPeerId, negotiationDeadline);
 
     channel.onopen = () => {
       connected = true;
+      const timer = this.negotiationTimers.get(rxPeerId);
+      if (timer) clearTimeout(timer);
+      this.negotiationTimers.delete(rxPeerId);
       this.onLogMessage(`Secure binary datachannel open with [${rxPeerId}]. Starting streams.`);
       this.startFileTransferQueue(rxPeerId);
     };
@@ -328,10 +391,16 @@ export class P2PSender {
 
     this.onLogMessage(`[Relay Fallback] Setting up WebSocket chunk relay for [${rxPeerId}]...`);
 
+    const timer = this.negotiationTimers.get(rxPeerId);
+    if (timer) clearTimeout(timer);
+    this.negotiationTimers.delete(rxPeerId);
+
     const pc = this.peers.get(rxPeerId);
     const ch = this.channels.get(rxPeerId);
     ch?.close();
     pc?.close();
+    this.peers.delete(rxPeerId);
+    this.channels.delete(rxPeerId);
 
     this.activeTransfers.set(rxPeerId, {
       fileIndex: transfer?.fileIndex || 0,
@@ -523,7 +592,7 @@ export class P2PSender {
     const totalChunks = Math.ceil(file.size / CHUNK_SIZE);
 
     if (!transfer.isRelaying && channel) {
-      channel.bufferedAmountLowThreshold = 65536;
+      channel.bufferedAmountLowThreshold = BUFFER_LOW_WATER_MARK;
     }
 
     while (transfer.chunkIndex < totalChunks && transfer.isTransferring) {
@@ -532,14 +601,36 @@ export class P2PSender {
         break;
       }
 
-      // Check overflow limit for direct P2P
-      if (!transfer.isRelaying && channel && channel.bufferedAmount > 1024 * 1024) {
+      // Check overflow limit for direct P2P.
+      //
+      // The listener is registered before the threshold is re-checked: if the
+      // buffer drained in between, "bufferedamountlow" has already fired and
+      // waiting for it would hang the transfer permanently.
+      if (!transfer.isRelaying && channel && channel.bufferedAmount > BUFFER_HIGH_WATER_MARK) {
         await new Promise<void>((resolve) => {
-          const onLow = () => {
+          let settled = false;
+          const finish = () => {
+            if (settled) return;
+            settled = true;
             channel.removeEventListener("bufferedamountlow", onLow);
+            clearInterval(poll);
             resolve();
           };
+          const onLow = () => finish();
           channel.addEventListener("bufferedamountlow", onLow);
+
+          // Safety net: covers both the drain race and a channel that closes
+          // while we are waiting.
+          const poll = setInterval(() => {
+            if (
+              channel.readyState !== "open" ||
+              channel.bufferedAmount <= channel.bufferedAmountLowThreshold
+            ) {
+              finish();
+            }
+          }, 50);
+
+          if (channel.bufferedAmount <= channel.bufferedAmountLowThreshold) finish();
         });
       }
 
@@ -593,11 +684,15 @@ export class P2PSender {
   private cleanupPeer(peerId: string) {
     const pc = this.peers.get(peerId);
     const ch = this.channels.get(peerId);
+    const timer = this.negotiationTimers.get(peerId);
+    if (timer) clearTimeout(timer);
     ch?.close();
     pc?.close();
     this.peers.delete(peerId);
     this.channels.delete(peerId);
     this.activeTransfers.delete(peerId);
+    this.negotiationTimers.delete(peerId);
+    this.lastProgressUpdates.delete(peerId);
   }
 }
 
@@ -607,6 +702,10 @@ export interface P2PReceiverOptions {
   encryptionKeyHex?: string;
   ws?: WebSocket | null;
   peerId?: string;
+  /** Token from /verify-password or /access; required to join a locker room. */
+  accessToken?: string;
+  /** Pre-agreed key for Direct Beam, where there is no link key to import. */
+  sharedKey?: CryptoKey | null;
 }
 
 export class P2PReceiver {
@@ -625,6 +724,7 @@ export class P2PReceiver {
 
   private senderPeerId: string | null = null;
   private isRelaying = false;
+  private accessToken = "";
 
   private currentFile: {
     index: number;
@@ -633,6 +733,13 @@ export class P2PReceiver {
     totalChunks: number;
     receivedChunks: number;
   } | null = null;
+
+  /** Chunk indexes already persisted for the current file, for dedupe. */
+  private receivedChunkIndexes = new Set<number>();
+
+  /** Service Worker stream downloads still reading from IndexedDB. */
+  private pendingStreamDownloads = 0;
+  private swMessageHandler: ((event: MessageEvent) => void) | null = null;
 
   public onStatusChange: (status: TransferState) => void = () => {};
   public onProgress: (progress: TransferProgress) => void = () => {};
@@ -644,10 +751,12 @@ export class P2PReceiver {
   constructor(options: P2PReceiverOptions) {
     this.roomId = options.roomId || "";
     this.targetSenderPeerId = options.senderPeerId || "";
-    this.peerId = options.peerId || "receiver_" + Math.random().toString(36).substring(2, 6);
+    this.peerId = options.peerId || "receiver_" + generateClientId();
     this.encryptionKeyHex = options.encryptionKeyHex || "";
     this.ws = options.ws || null;
     this.isExternalWs = !!options.ws;
+    this.accessToken = options.accessToken || "";
+    this.cryptoKey = options.sharedKey || null;
   }
 
   public async start() {
@@ -666,7 +775,13 @@ export class P2PReceiver {
         return;
       }
 
-      const wsUrl = `${await getWebSocketURL()}?roomId=${this.roomId}&peerId=${this.peerId}&role=receiver`;
+      const params = new URLSearchParams({
+        roomId: this.roomId,
+        peerId: this.peerId,
+        role: "receiver"
+      });
+      if (this.accessToken) params.set("token", this.accessToken);
+      const wsUrl = `${await getWebSocketURL()}?${params.toString()}`;
       this.ws = new WebSocket(wsUrl);
       this.ws.binaryType = "arraybuffer";
 
@@ -733,8 +848,9 @@ export class P2PReceiver {
       if (decoded.senderPeerId) {
         this.senderPeerId = decoded.senderPeerId;
       }
-      // Binary chunk data arrives via WebSocket relay
-      await this.handleBinaryChunk(decoded.chunkData);
+      // Relayed chunks carry their own file/chunk index, so honour it rather
+      // than assuming arrival order.
+      await this.handleBinaryChunk(decoded.chunkData, decoded.fileIndex, decoded.chunkIndex);
     } catch (err) {
       console.error("Binary client message parsing failed:", err);
     }
@@ -833,6 +949,7 @@ export class P2PReceiver {
         totalChunks,
         receivedChunks: 0,
       };
+      this.receivedChunkIndexes.clear();
 
       this.startTime = Date.now();
       this.bytesCompleted = 0;
@@ -847,9 +964,7 @@ export class P2PReceiver {
       await this.compileFile();
     }
     else if (type === "all-complete") {
-      this.onLogMessage("Locker download accomplished entirely!");
-      this.onStatusChange("complete");
-      clearRoomFromDB(this.roomId || "direct_beam").catch((err) => console.error("Database purge failure:", err));
+      await this.finalizeTransfer("");
     }
   }
 
@@ -867,6 +982,7 @@ export class P2PReceiver {
         totalChunks,
         receivedChunks: 0,
       };
+      this.receivedChunkIndexes.clear();
 
       this.startTime = Date.now();
       this.bytesCompleted = 0;
@@ -881,9 +997,7 @@ export class P2PReceiver {
       await this.compileFile();
     }
     else if (type === "all-complete") {
-      this.onLogMessage("[Relay] Locker download accomplished entirely!");
-      this.onStatusChange("complete");
-      clearRoomFromDB(this.roomId || "direct_beam").catch((err) => console.error("Database purge failure:", err));
+      await this.finalizeTransfer("[Relay] ");
     }
   }
 
@@ -898,8 +1012,12 @@ export class P2PReceiver {
         // High performance: redirect to Service Worker stream.
         // Bypasses browser JS heap memory block entirely.
         this.onLogMessage(`[Stream] Initiating memory-safe streaming compile...`);
+        // The Service Worker reports back when it has finished reading this
+        // stream, so cached chunks are not deleted out from under it.
+        this.ensureStreamCompletionListener();
+        this.pendingStreamDownloads++;
         const streamUrl = `/api/download-stream?roomId=${dbName}&fileIndex=${this.currentFile.index}&totalChunks=${this.currentFile.totalChunks}&name=${encodeURIComponent(this.currentFile.name)}&size=${this.currentFile.size}`;
-        
+
         const anchor = document.createElement("a");
         anchor.href = streamUrl;
         anchor.download = this.currentFile.name;
@@ -951,30 +1069,108 @@ export class P2PReceiver {
         }));
       }
 
-      // Update room counters
-      this.ws?.send(JSON.stringify({
-        type: "download-complete",
-        payload: { fileIndex: this.currentFile.index }
-      }));
+      // The locker's download counter is bumped once, from "all-complete".
+      // Reporting per file here made a multi-file locker exhaust its own
+      // download quota before the second file was sent.
 
     } catch (err: any) {
       this.onLogMessage(`Compilation failure on merged file: ${err.message}`);
+      this.onStatusChange("failed");
     }
   }
 
-  private async handleBinaryChunk(data: ArrayBuffer) {
+  /** Subscribes once to Service Worker stream completion notifications. */
+  private ensureStreamCompletionListener() {
+    if (this.swMessageHandler || typeof navigator === "undefined" || !navigator.serviceWorker) {
+      return;
+    }
+    this.swMessageHandler = (event: MessageEvent) => {
+      const data = event.data;
+      if (!data || data.type !== "download-stream-settled") return;
+      if (this.pendingStreamDownloads > 0) this.pendingStreamDownloads--;
+    };
+    navigator.serviceWorker.addEventListener("message", this.swMessageHandler);
+  }
+
+  private removeStreamCompletionListener() {
+    if (!this.swMessageHandler || typeof navigator === "undefined" || !navigator.serviceWorker) {
+      return;
+    }
+    navigator.serviceWorker.removeEventListener("message", this.swMessageHandler);
+    this.swMessageHandler = null;
+  }
+
+  /**
+   * Called once the sender confirms every file has been delivered.
+   *
+   * Cached chunks are only purged after the browser has finished reading them:
+   * the Service Worker download streams lazily out of IndexedDB, so clearing
+   * the store immediately used to race the stream and break large files.
+   */
+  private async finalizeTransfer(logPrefix: string) {
+    this.onLogMessage(`${logPrefix}Locker download accomplished entirely!`);
+    this.onStatusChange("complete");
+
+    // Tell the server this receiver finished the whole locker.
+    if (this.ws && this.ws.readyState === WebSocket.OPEN && this.roomId) {
+      this.ws.send(JSON.stringify({ type: "download-complete" }));
+    }
+
+    const dbName = this.roomId || "direct_beam";
+    if (this.pendingStreamDownloads === 0) {
+      clearRoomFromDB(dbName).catch((err) => console.error("Database purge failure:", err));
+    } else {
+      this.onLogMessage("Waiting for streamed downloads to finish before clearing the cache...");
+      this.purgeWhenStreamsSettle(dbName);
+    }
+  }
+
+  /**
+   * Waits for in-flight Service Worker stream downloads to drain before
+   * clearing cached chunks, with a ceiling so the cache is never leaked.
+   */
+  private purgeWhenStreamsSettle(dbName: string) {
+    const startedAt = Date.now();
+    const maxWaitMs = 10 * 60 * 1000;
+
+    const poll = setInterval(() => {
+      const settled = this.pendingStreamDownloads === 0;
+      const timedOut = Date.now() - startedAt > maxWaitMs;
+      if (!settled && !timedOut) return;
+
+      clearInterval(poll);
+      if (timedOut) {
+        this.onLogMessage("Stream download wait timed out; clearing cached chunks.");
+      }
+      clearRoomFromDB(dbName)
+        .catch((err) => console.error("Database purge failure:", err))
+        .finally(() => this.removeStreamCompletionListener());
+    }, 1000);
+  }
+
+  private async handleBinaryChunk(data: ArrayBuffer, fileIndex?: number, chunkIndex?: number) {
     if (!this.currentFile) return;
+
+    // A relayed frame states which file it belongs to; ignore anything that is
+    // not for the transfer currently in progress.
+    if (fileIndex !== undefined && fileIndex !== this.currentFile.index) return;
 
     try {
       let finalBuffer = data;
       if (this.cryptoKey) {
         finalBuffer = await decryptChunk(this.cryptoKey, data);
       }
-      
-      const currentIdx = this.currentFile.receivedChunks;
+
+      // Prefer the index from the wire; fall back to arrival order for the
+      // ordered WebRTC data channel, which carries no framing of its own.
+      const currentIdx = chunkIndex !== undefined ? chunkIndex : this.currentFile.receivedChunks;
+      if (currentIdx < 0 || currentIdx >= this.currentFile.totalChunks) return;
+      if (this.receivedChunkIndexes.has(currentIdx)) return; // duplicate frame
+
       await saveChunkToDB(this.roomId || "direct_beam", this.currentFile.index, currentIdx, finalBuffer);
 
-      this.currentFile.receivedChunks++;
+      this.receivedChunkIndexes.add(currentIdx);
+      this.currentFile.receivedChunks = this.receivedChunkIndexes.size;
       this.bytesCompleted += finalBuffer.byteLength;
 
       if (this.isRelaying) {

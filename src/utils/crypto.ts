@@ -88,6 +88,84 @@ export async function decryptChunk(
   );
 }
 
+// ----------------------------------------------------
+// Direct Beam key agreement (ECDH P-256)
+//
+// Direct Beam has no shared link secret, so both sides derive one over the
+// signalling channel. The server only ever sees public keys, which means a
+// relay fallback no longer carries plaintext file bytes through it.
+//
+// NOTE: this is unauthenticated ECDH. It stops a passive signalling server from
+// reading transfers, but an active server could still substitute its own keys.
+// compareSafetyCode() below lets both people detect that by eye.
+// ----------------------------------------------------
+
+export interface KeyAgreementPair {
+  keyPair: CryptoKeyPair;
+  publicKeyHex: string;
+}
+
+/** Creates an ephemeral ECDH key pair for a single transfer. */
+export async function generateKeyAgreementPair(): Promise<KeyAgreementPair> {
+  const keyPair = await window.crypto.subtle.generateKey(
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    ["deriveKey", "deriveBits"]
+  );
+  const raw = await window.crypto.subtle.exportKey("raw", keyPair.publicKey);
+  return { keyPair, publicKeyHex: bytesToHex(new Uint8Array(raw)) };
+}
+
+/** Derives the shared AES-256-GCM transfer key from the peer's public key. */
+export async function deriveSharedKey(
+  privateKey: CryptoKey,
+  peerPublicKeyHex: string
+): Promise<CryptoKey> {
+  const peerPublicKey = await importPeerPublicKey(peerPublicKeyHex);
+  return await window.crypto.subtle.deriveKey(
+    { name: "ECDH", public: peerPublicKey },
+    privateKey,
+    { name: "AES-GCM", length: 256 },
+    true,
+    ["encrypt", "decrypt"]
+  );
+}
+
+async function importPeerPublicKey(publicKeyHex: string): Promise<CryptoKey> {
+  // Uncompressed P-256 points are 65 bytes: 0x04 || X(32) || Y(32).
+  if (!/^[0-9a-fA-F]{130}$/.test(publicKeyHex) || !publicKeyHex.startsWith("04")) {
+    throw new Error("Invalid peer public key for key agreement.");
+  }
+  return await window.crypto.subtle.importKey(
+    "raw",
+    hexToBytes(publicKeyHex),
+    { name: "ECDH", namedCurve: "P-256" },
+    true,
+    []
+  );
+}
+
+/**
+ * Derives a short human-comparable code from the agreed key. Both devices show
+ * the same six digits when no one is sitting in the middle.
+ */
+export async function computeSafetyCode(sharedKey: CryptoKey): Promise<string> {
+  const raw = await window.crypto.subtle.exportKey("raw", sharedKey);
+  const digest = await window.crypto.subtle.digest("SHA-256", raw);
+  const view = new DataView(digest);
+  return String(view.getUint32(0, false) % 1000000).padStart(6, "0");
+}
+
+function bytesToHex(bytes: Uint8Array): string {
+  return Array.from(bytes)
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+function hexToBytes(hex: string): Uint8Array {
+  return new Uint8Array(hex.match(/.{1,2}/g)!.map((byte) => parseInt(byte, 16)));
+}
+
 export interface PasswordHashResult {
   hash: string;
   salt: string;

@@ -19,21 +19,43 @@ let cachedIceConfig: RTCConfiguration = {
   iceServers: typeof navigator !== "undefined" && navigator.onLine ? defaultPublicIceServers : [],
 };
 
+/** Extracts the host from an ICE URL such as "stun:stun.example.com:19302". */
+function iceUrlHost(url: string): string {
+  const withoutScheme = url.replace(/^(stun|stuns|turn|turns):/i, "");
+  const withoutQuery = withoutScheme.split("?")[0];
+  // Strip the port, taking care not to break bracketed IPv6 literals.
+  if (withoutQuery.startsWith("[")) {
+    return withoutQuery.slice(0, withoutQuery.indexOf("]") + 1).toLowerCase();
+  }
+  return withoutQuery.split(":")[0].toLowerCase();
+}
+
+function isReachableOffline(host: string): boolean {
+  return (
+    host === "localhost" ||
+    host === "127.0.0.1" ||
+    host === "[::1]" ||
+    host.endsWith(".local") ||
+    /^192\.168\./.test(host) ||
+    /^10\./.test(host) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(host) ||
+    /^169\.254\./.test(host)
+  );
+}
+
 export function getIceConfig(): RTCConfiguration {
   const isOnline = typeof navigator !== "undefined" ? navigator.onLine : true;
-  if (!isOnline && cachedIceConfig.iceServers) {
-    return {
-      ...cachedIceConfig,
-      iceServers: cachedIceConfig.iceServers.filter(server => {
-        const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
-        return urls.some(url => {
-          const part = url.split(":")[1] || "";
-          return part.includes("127.0.0.1") || part.includes("localhost") || part.includes("192.168.") || part.includes("10.") || part.includes(".local");
-        });
-      })
-    };
-  }
-  return cachedIceConfig;
+  if (isOnline || !cachedIceConfig.iceServers) return cachedIceConfig;
+
+  // Offline: keep only servers that can actually be reached on the local
+  // network, so ICE fails fast instead of stalling on public STUN timeouts.
+  return {
+    ...cachedIceConfig,
+    iceServers: cachedIceConfig.iceServers.filter((server) => {
+      const urls = Array.isArray(server.urls) ? server.urls : [server.urls];
+      return urls.every((url) => isReachableOffline(iceUrlHost(url)));
+    })
+  };
 }
 
 export async function fetchIceConfig(): Promise<RTCConfiguration> {
@@ -90,50 +112,41 @@ export function formatTime(seconds: number): string {
   return `${mins}m ${secs}s left`;
 }
 
-// Base websocket url detection with smart fallback for external hosting servers like Vercel
+/**
+ * Resolves the signalling WebSocket URL.
+ *
+ * Same-origin by default. Set VITE_SIGNALING_SERVER at build time to point a
+ * statically-hosted frontend at a separate signalling backend.
+ *
+ * There is deliberately no built-in remote fallback: silently redirecting
+ * signalling to a third-party host would leak peer names, IP addresses, file
+ * metadata and — on the relay path — file contents to an operator the person
+ * running this never chose.
+ */
 export async function getWebSocketURL(): Promise<string> {
   const loc = window.location;
-  
-  // 1. Check for custom environment overrides (Vercel settings)
+
   const metaEnv = (import.meta as any).env || {};
-  let envUrl = (metaEnv.VITE_SIGNALING_SERVER || metaEnv.VITE_APP_URL || "").trim();
-  
-  // If the envUrl is just "/", ignore it
+  let envUrl = String(metaEnv.VITE_SIGNALING_SERVER || "").trim();
   if (envUrl === "/") envUrl = "";
 
-  if (envUrl && envUrl.startsWith("http")) {
-    const cleanUrl = envUrl.replace(/^http/, "ws");
-    return cleanUrl.endsWith("/signaling") ? cleanUrl : `${cleanUrl}/signaling`;
-  }
-
-  // 2. Default Google Cloud Run fallback domain (The live signaling backend)
-  const cloudRunFallback = "https://ais-pre-kf3wbykcpypypwsdu77fyr-35023296777.asia-east1.run.app";
-
-  // If we are not on localhost or Cloud Run directly, default to the persistent signaling server on Cloud Run
-  const isLocalOrCloudRun = loc.host.includes("localhost") || 
-                            loc.host.includes("127.0.0.1") || 
-                            loc.host.includes("run.app") || 
-                            loc.host.includes("3000") ||
-                            loc.host.includes("3001") ||
-                            loc.hostname.endsWith(".local") ||
-                            /^(?:192\.168\.|10\.|172\.(?:1[6-9]|2[0-9]|3[0-1])\.|169\.254\.)/.test(loc.hostname);
-
-  let targetHost = loc.host;
-  let targetProtocol = loc.protocol === "https:" ? "wss:" : "ws:";
-
-  if (!isLocalOrCloudRun) {
+  if (envUrl) {
+    let parsed: URL;
     try {
-      const url = new URL(cloudRunFallback);
-      targetHost = url.host;
-      targetProtocol = url.protocol === "https:" ? "wss:" : "ws:";
-      
-      // Attempt to wake up the Cloud Run instance via HTTP ping before WSS dialing
-      // Cloud Run sometimes drops cold WSS connections if the container is asleep
-      await fetch(`${url.protocol}//${url.host}/api/ip`).catch(() => {});
-    } catch (e) {
-      console.error("Invalid cloudRunFallback URL:", e);
+      parsed = new URL(envUrl, loc.origin);
+    } catch {
+      throw new Error(`VITE_SIGNALING_SERVER is not a valid URL: ${envUrl}`);
     }
+    if (!/^(https?|wss?):$/.test(parsed.protocol)) {
+      throw new Error(`VITE_SIGNALING_SERVER must use http(s) or ws(s): ${envUrl}`);
+    }
+    const protocol =
+      parsed.protocol === "https:" || parsed.protocol === "wss:" ? "wss:" : "ws:";
+    const path = parsed.pathname.replace(/\/+$/, "");
+    const signalingPath = path.endsWith("/signaling") ? path : `${path}/signaling`;
+    return `${protocol}//${parsed.host}${signalingPath}`;
   }
 
-  return `${targetProtocol}//${targetHost}/signaling`;
+  const protocol = loc.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${loc.host}/signaling`;
 }
