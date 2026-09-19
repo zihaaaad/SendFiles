@@ -37,6 +37,32 @@ interface NetworkDiscoveryHubProps {
   onJoinRoom: (roomId: string, keyHex: string) => void;
 }
 
+const POLL_INTERVAL_MS = 6000;
+
+/**
+ * Compares the fields this list actually renders, so an unchanged poll result
+ * does not replace state and force a re-render.
+ */
+function sameRoomList(a: DiscoveredRoom[], b: DiscoveredRoom[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i];
+    const y = b[i];
+    if (
+      x.roomId !== y.roomId ||
+      x.downloadCount !== y.downloadCount ||
+      x.maxDownloads !== y.maxDownloads ||
+      x.expiresAt !== y.expiresAt ||
+      x.hasPassword !== y.hasPassword ||
+      x.files.length !== y.files.length
+    ) {
+      return false;
+    }
+  }
+  return true;
+}
+
 export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubProps) {
   const [rooms, setRooms] = useState<DiscoveredRoom[]>([]);
   const [loading, setLoading] = useState(true);
@@ -51,7 +77,10 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
       const res = await fetch("/api/rooms");
       if (res.ok) {
         const data = await res.json();
-        setRooms(data);
+        // Only swap state when the listing actually changed. Re-setting an
+        // identical array every few seconds re-rendered the whole list and made
+        // it flicker, which is very visible once several lockers are active.
+        setRooms((prev) => (sameRoomList(prev, data) ? prev : data));
       }
     } catch {
       // Quiet fail to keep dashboard clean
@@ -61,9 +90,33 @@ export default function NetworkDiscoveryHub({ onJoinRoom }: NetworkDiscoveryHubP
   };
 
   useEffect(() => {
-    fetchRooms();
-    const interval = setInterval(fetchRooms, 4000);
-    return () => clearInterval(interval);
+    let interval: ReturnType<typeof setInterval> | null = null;
+
+    const startPolling = () => {
+      if (interval !== null) return;
+      fetchRooms();
+      interval = setInterval(fetchRooms, POLL_INTERVAL_MS);
+    };
+
+    const stopPolling = () => {
+      if (interval === null) return;
+      clearInterval(interval);
+      interval = null;
+    };
+
+    // Polling from a hidden tab costs a request per client per interval and,
+    // with many clients, loads the server for nothing.
+    const handleVisibility = () => {
+      if (document.visibilityState === "visible") startPolling();
+      else stopPolling();
+    };
+
+    handleVisibility();
+    document.addEventListener("visibilitychange", handleVisibility);
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibility);
+      stopPolling();
+    };
   }, []);
 
   const handleManualJoin = (e: React.FormEvent) => {

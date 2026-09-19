@@ -5,9 +5,8 @@
 
 import React, { useState, useEffect, useRef } from "react";
 import { 
-  Wifi, 
-  User, 
-  Globe, 
+  Wifi,
+  User,
   Smartphone,
   Network, 
   RefreshCw,
@@ -65,6 +64,56 @@ interface DiscoveredPeer {
   name: string;
 }
 
+/**
+ * One device in the discovered list.
+ *
+ * Memoised so that a peer joining or leaving only mounts or unmounts that one
+ * row, instead of re-rendering every row in the list. `onSelect` is the raw
+ * state setter, which React keeps referentially stable, so the memo holds.
+ */
+const PeerRow = React.memo(function PeerRow({
+  peer,
+  isSelected,
+  onSelect,
+}: {
+  peer: DiscoveredPeer;
+  isSelected: boolean;
+  onSelect: (peerId: string) => void;
+}) {
+  return (
+    <button
+      onClick={() => onSelect(peer.peerId)}
+      className={`w-full glass-row hover:bg-[#265c34]/5 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-colors ${
+        isSelected ? "ring-1.5 ring-[#265c34] border-[#265c34]/30 bg-[#265c34]/4" : ""
+      }`}
+    >
+      <div className="flex items-center space-x-3 min-w-0">
+        <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/15">
+          <Smartphone size={14} />
+        </div>
+        <div className="min-w-0">
+          <span className="text-xs font-extrabold text-slate-900 block truncate">{peer.name}</span>
+          <span className="text-[9px] font-mono text-slate-500 block uppercase tracking-wider">Tap to share file</span>
+        </div>
+      </div>
+      <ChevronRight size={12} className="text-slate-400" />
+    </button>
+  );
+});
+
+/**
+ * Structural comparison so an identical peer list does not trigger a re-render.
+ * The server sends the list in a stable order, so a positional walk is enough.
+ */
+function samePeerList(a: DiscoveredPeer[], b: DiscoveredPeer[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    if (a[i].peerId !== b[i].peerId || a[i].name !== b[i].name) return false;
+  }
+  return true;
+}
+
 interface CreatedLocker {
   roomId: string;
   expiresAt: number;
@@ -116,6 +165,7 @@ export default function App() {
   const [myPublicIp, setMyPublicIp] = useState<string>("Detecting public IP...");
   const [socketStatus, setSocketStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [discoveryMode, setDiscoveryMode] = useState<"lan" | "strict" | "off">("lan");
+  const [socketError, setSocketError] = useState<string>("");
   const [selectedRecipientId, setSelectedRecipientId] = useState<string | null>(null);
   const [copiedLink, setCopiedLink] = useState(false);
   const [networkIps, setNetworkIps] = useState<string[]>([]);
@@ -236,6 +286,9 @@ export default function App() {
 
   // 5. Active references
   const wsRef = useRef<WebSocket | null>(null);
+  const reconnectTimerRef = useRef<number | null>(null);
+  const reconnectAttemptsRef = useRef(0);
+  const shouldBeConnectedRef = useRef(false);
   const activeSenderFileRef = useRef<File | null>(null);
   const p2pSenderRef = useRef<P2PSender | null>(null);
   const directSenderRef = useRef<P2PSender | null>(null);
@@ -300,11 +353,47 @@ export default function App() {
   // ----------------------------------------------------
   // Direct Beam WebSocket Connection
   // ----------------------------------------------------
-  const connectSignaling = async () => {
-    setSocketStatus("connecting");
-    if (wsRef.current) {
-      try { wsRef.current.close(); } catch {}
+  const clearReconnectTimer = () => {
+    if (reconnectTimerRef.current !== null) {
+      window.clearTimeout(reconnectTimerRef.current);
+      reconnectTimerRef.current = null;
     }
+  };
+
+  /**
+   * Reconnects with exponential backoff and jitter.
+   *
+   * A fixed 3s retry meant that whenever the server was briefly unhappy — an
+   * IP connection cap, a restart — every client retried in lockstep and kept
+   * it that way. Jitter spreads the herd out.
+   */
+  const scheduleReconnect = () => {
+    if (!shouldBeConnectedRef.current) return;
+    clearReconnectTimer();
+
+    const attempt = Math.min(reconnectAttemptsRef.current, 5);
+    reconnectAttemptsRef.current = attempt + 1;
+    const base = Math.min(1000 * 2 ** attempt, 20000);
+    const delay = base * (0.7 + Math.random() * 0.6);
+
+    reconnectTimerRef.current = window.setTimeout(() => {
+      reconnectTimerRef.current = null;
+      if (shouldBeConnectedRef.current) connectSignaling();
+    }, delay);
+  };
+
+  const connectSignaling = async () => {
+    // Another socket is already live or in flight for this client: do not stack
+    // a second one. Duplicate sockets share a peer ID, so the server rejects
+    // them, which used to produce a connect/reject/retry churn that made every
+    // other client's device list flicker.
+    const existing = wsRef.current;
+    if (existing && (existing.readyState === WebSocket.OPEN || existing.readyState === WebSocket.CONNECTING)) {
+      return;
+    }
+
+    clearReconnectTimer();
+    setSocketStatus("connecting");
 
     try {
       const baseWsUrl = await getWebSocketURL();
@@ -314,16 +403,17 @@ export default function App() {
       wsRef.current = ws;
 
       ws.onopen = () => {
+        reconnectAttemptsRef.current = 0;
+        setSocketError("");
         setSocketStatus("online");
       };
 
       ws.onclose = () => {
+        // Ignore a close belonging to a socket we have already replaced.
+        if (wsRef.current !== ws) return;
+        wsRef.current = null;
         setSocketStatus("offline");
-        setTimeout(() => {
-          if (window.location.hash === "" || !window.location.hash.includes("/locker/")) {
-            connectSignaling();
-          }
-        }, 3000);
+        scheduleReconnect();
       };
 
       ws.onerror = () => {
@@ -354,11 +444,31 @@ export default function App() {
           }
 
           switch (type) {
+            case "error":
+              // The gateway refused this connection. Surface why instead of
+              // silently reconnecting, and for an identity clash drop the
+              // stored peer ID so the next attempt uses a fresh one rather
+              // than colliding forever.
+              console.warn("[Signaling] Gateway refused connection:", message.message);
+              setSocketError(message.message || "The signalling server refused this connection.");
+              if (typeof message.message === "string" && message.message.includes("peer ID")) {
+                try { sessionStorage.removeItem("filedrop_client_peer_id"); } catch {}
+              }
+              break;
+
             case "peers-list":
               // The server now scopes this list to peers this client is allowed
               // to discover, so no client-side IP filtering is needed.
+              //
+              // The server re-broadcasts on every join and leave. Replacing the
+              // array unconditionally re-rendered the whole device list each
+              // time, even when nothing about it had changed — which is what
+              // made the list visibly twitch on a busy network.
               if (message.peers) {
-                setPeers(message.peers.filter((p: any) => p.peerId !== peerId));
+                const incoming: DiscoveredPeer[] = message.peers
+                  .filter((p: any) => p.peerId !== peerId)
+                  .map((p: any) => ({ peerId: p.peerId, name: p.name }));
+                setPeers((prev) => (samePeerList(prev, incoming) ? prev : incoming));
               }
               if (message.yourIp) {
                 setMyPublicIp(message.yourIp);
@@ -422,13 +532,26 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (view === "home" && tab === "beam") {
+    const wantsConnection = view === "home" && tab === "beam";
+    shouldBeConnectedRef.current = wantsConnection;
+
+    if (wantsConnection) {
+      reconnectAttemptsRef.current = 0;
       connectSignaling();
     }
+
     return () => {
-      if (wsRef.current) {
-        wsRef.current.close();
-        wsRef.current = null;
+      // Leaving the Direct Share tab is an intentional disconnect. Without this
+      // flag the close handler queued a reconnect anyway, so the client came
+      // back as a phantom peer in everyone else's list a few seconds later.
+      shouldBeConnectedRef.current = false;
+      clearReconnectTimer();
+      const socket = wsRef.current;
+      wsRef.current = null;
+      if (socket) {
+        socket.onclose = null;
+        socket.onerror = null;
+        try { socket.close(); } catch {}
       }
       cleanupDirectWebRTC();
     };
@@ -797,8 +920,8 @@ export default function App() {
 
   // The server decides who is discoverable and only sends peers this client may
   // see, so every entry in `peers` is already in scope.
+  // The server scopes discovery, so every entry here is already in scope.
   const localPeers = peers;
-  const globalPeers: DiscoveredPeer[] = [];
 
   const qrUrl = resolvedOrigin;
 
@@ -1013,6 +1136,18 @@ export default function App() {
             {tab === "beam" && senderTransfer === null && (
               <div className="space-y-5">
                 
+                {/* Connection problem notice */}
+                {socketError && socketStatus !== "online" && (
+                  <div className="flex items-start gap-2 text-[11px] text-amber-900 bg-amber-50 border border-amber-200 p-3 rounded-xl">
+                    <AlertCircle size={13} className="shrink-0 mt-0.5" />
+                    <div className="min-w-0">
+                      <p className="font-bold">Discovery unavailable</p>
+                      <p className="text-[10.5px] text-amber-800 leading-snug mt-0.5">{socketError}</p>
+                      <p className="text-[10px] text-amber-700/80 leading-snug mt-1">Retrying automatically.</p>
+                    </div>
+                  </div>
+                )}
+
                 {/* Guide Panel */}
                 <div className="glass-panel p-4.5 rounded-xl space-y-2.5 select-none">
                   <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider">How to send files</h3>
@@ -1055,54 +1190,14 @@ export default function App() {
                       {localPeers.length > 0 && (
                         <div className="space-y-1.5">
                           <span className="text-[8.5px] font-mono text-[#265c34] font-bold uppercase tracking-widest block pl-1">Nearby Devices</span>
-                          <div className="grid grid-cols-1 gap-2">
+                          <div className="grid grid-cols-1 gap-2 list-virtualized">
                             {localPeers.map(peer => (
-                              <button
+                              <PeerRow
                                 key={peer.peerId}
-                                onClick={() => setSelectedRecipientId(peer.peerId)}
-                                className={`w-full glass-panel hover:bg-[#265c34]/5 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/30 bg-[#265c34]/4" : ""
-                                }`}
-                              >
-                                <div className="flex items-center space-x-3 min-w-0">
-                                  <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/15">
-                                    <Smartphone size={14} />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-extrabold text-slate-900 block truncate">{peer.name}</span>
-                                    <span className="text-[9px] font-mono text-slate-500 block uppercase tracking-wider">Tap to share file</span>
-                                  </div>
-                                </div>
-                                <ChevronRight size={12} className="text-slate-400" />
-                              </button>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {globalPeers.length > 0 && (
-                        <div className="space-y-1.5">
-                          <span className="text-[8.5px] font-mono text-slate-500 font-bold uppercase tracking-widest block pl-1">Remote Devices</span>
-                          <div className="grid grid-cols-1 gap-2">
-                            {globalPeers.map(peer => (
-                              <button
-                                key={peer.peerId}
-                                onClick={() => setSelectedRecipientId(peer.peerId)}
-                                className={`w-full glass-panel hover:bg-[#265c34]/5 text-left p-4 rounded-xl flex items-center justify-between gap-3 cursor-pointer transition-all ${
-                                  selectedRecipientId === peer.peerId ? "ring-1.5 ring-[#265c34] border-[#265c34]/30 bg-[#265c34]/4" : ""
-                                }`}
-                              >
-                                <div className="flex items-center space-x-3 min-w-0">
-                                  <div className="w-8 h-8 bg-[#265c34]/8 text-[#265c34] rounded-lg flex items-center justify-center shrink-0 border border-[#265c34]/15">
-                                    <Globe size={14} />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <span className="text-xs font-extrabold text-slate-900 block truncate">{peer.name}</span>
-                                    <span className="text-[9px] font-mono text-slate-500 block uppercase tracking-wider">Remote Connection</span>
-                                  </div>
-                                </div>
-                                <ChevronRight size={12} className="text-slate-400" />
-                              </button>
+                                peer={peer}
+                                isSelected={selectedRecipientId === peer.peerId}
+                                onSelect={setSelectedRecipientId}
+                              />
                             ))}
                           </div>
                         </div>

@@ -13,19 +13,33 @@
   --animate-pulse-glow: pulseGlow 2.5s infinite ease-in-out;
 }
 
-@keyframes pulseGlow {
-  0%, 100% {
-    box-shadow: 0 0 10px rgba(38, 92, 52, 0.1);
-    border-color: rgba(38, 92, 52, 0.12);
-  }
-  50% {
-    box-shadow: 0 0 18px rgba(38, 92, 52, 0.25);
-    border-color: rgba(38, 92, 52, 0.35);
-  }
+/*
+ * Glow pulse.
+ *
+ * Animating box-shadow/border-color repaints on every frame. Driving `opacity`
+ * on a pseudo-element instead keeps the animation on the compositor, so a
+ * progress bar glowing during a transfer costs nothing per frame.
+ */
+@keyframes pulseGlowOpacity {
+  0%, 100% { opacity: 0.35; }
+  50% { opacity: 1; }
 }
 
 .glow-box {
-  animation: pulseGlow 2.5s infinite ease-in-out;
+  position: relative;
+  isolation: isolate;
+}
+
+.glow-box::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: -1;
+  box-shadow: 0 0 18px rgba(38, 92, 52, 0.28);
+  animation: pulseGlowOpacity 2.5s infinite ease-in-out;
+  will-change: opacity;
 }
 
 /* Custom premium scrollbar look */
@@ -54,6 +68,43 @@
   -webkit-backdrop-filter: blur(16px);
   border: 1px solid rgba(38, 92, 52, 0.09);
   box-shadow: 0 4px 20px -2px rgba(27, 67, 39, 0.04), 0 2px 8px -1px rgba(27, 67, 39, 0.02);
+}
+
+/*
+ * Rows inside a repeating list drop the backdrop blur.
+ *
+ * backdrop-filter forces the compositor to re-sample everything behind each
+ * element. That is affordable on a handful of large panels and expensive once
+ * it is on every row of a list that updates whenever someone joins or leaves.
+ * The flat background is visually near-identical on top of the page backdrop.
+ */
+.glass-row {
+  background: rgba(255, 255, 255, 0.92);
+  border: 1px solid rgba(38, 92, 52, 0.09);
+  box-shadow: 0 1px 3px -1px rgba(27, 67, 39, 0.05);
+  /* Isolate each row's layout/paint so one changing row cannot dirty the rest. */
+  contain: layout paint style;
+}
+
+/*
+ * Long lists only paint what is on screen, and reserve height for what is not,
+ * so scrolling stays smooth and the scrollbar does not jump as rows arrive.
+ */
+.list-virtualized > * {
+  content-visibility: auto;
+  contain-intrinsic-size: auto 72px;
+}
+
+/* Honour a user's reduced-motion preference. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
+  }
 }
 
 .glass-panel-hover {
