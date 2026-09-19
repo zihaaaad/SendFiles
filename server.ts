@@ -530,7 +530,10 @@ async function getAllActiveRooms(clientIp: string): Promise<Room[]> {
       if (isVisible(room)) activeRoomsList.push(room);
     }
   }
-  return activeRoomsList;
+
+  // Stable order: Map iteration and Redis set order both shift as lockers come
+  // and go, which made rows jump between polls in the discovery UI.
+  return activeRoomsList.sort((a, b) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0));
 }
 
 // ----------------------------------------------------
@@ -722,6 +725,8 @@ interface ConnectedPeer {
   lastActive: number;
   roomId?: string;
   role?: string;
+  /** Last peers-list JSON sent, so identical updates can be skipped. */
+  lastPeersPayload?: string;
 }
 
 interface DirectoryPeer {
@@ -777,7 +782,7 @@ async function getDirectoryPeers(): Promise<DirectoryPeer[]> {
     .filter((p) => !p.roomId)
     .map((p) => ({ peerId: p.peerId, name: p.name, ip: p.ip }));
 
-  if (!redisClient) return local;
+  if (!redisClient) return sortPeers(local);
 
   try {
     const entries: Record<string, string> = await redisClient.hGetAll(PEER_DIRECTORY_KEY);
@@ -805,11 +810,22 @@ async function getDirectoryPeers(): Promise<DirectoryPeer[]> {
     if (stalePeerIds.length > 0) {
       await redisClient.hDel(PEER_DIRECTORY_KEY, stalePeerIds);
     }
-    return Array.from(merged.values());
+    return sortPeers(Array.from(merged.values()));
   } catch (err) {
     console.error("[Redis Cluster] Peer directory read failed, using local peers:", err);
-    return local;
+    return sortPeers(local);
   }
+}
+
+/**
+ * Deterministic ordering by peer ID.
+ *
+ * Both Map iteration order and Redis hash order shift as peers come and go, so
+ * an unsorted list made rows jump around in every client's UI whenever anyone
+ * joined or left.
+ */
+function sortPeers(peers: DirectoryPeer[]): DirectoryPeer[] {
+  return peers.sort((a, b) => (a.peerId < b.peerId ? -1 : a.peerId > b.peerId ? 1 : 0));
 }
 
 /**
@@ -831,22 +847,57 @@ async function broadcastPeersList(): Promise<void> {
             (p) => p.peerId !== client.peerId && ipsMatchForDiscovery(p.ip, client.ip)
           );
 
-    client.ws.send(
-      JSON.stringify({
-        type: "peers-list",
-        // The client no longer needs raw peer IPs to group the list itself.
-        peers: visiblePeers.map((p) => ({ peerId: p.peerId, name: p.name })),
-        yourIp: client.ip,
-        discoveryMode
-      })
-    );
+    const payload = JSON.stringify({
+      type: "peers-list",
+      // The client no longer needs raw peer IPs to group the list itself.
+      peers: visiblePeers.map((p) => ({ peerId: p.peerId, name: p.name })),
+      yourIp: client.ip,
+      discoveryMode
+    });
+
+    // Skip clients whose view of the network is unchanged. Most joins and
+    // leaves are irrelevant to most clients, and a re-sent identical list still
+    // costs them a re-render.
+    if (client.lastPeersPayload === payload) continue;
+    client.lastPeersPayload = payload;
+    client.ws.send(payload);
   }
 }
 
+// Coalescing window for peer-list broadcasts.
+const PEERS_BROADCAST_DEBOUNCE_MS = 250;
+let peersBroadcastTimer: ReturnType<typeof setTimeout> | null = null;
+let peersBroadcastPending = false;
+
+/**
+ * Coalesces peer-list broadcasts.
+ *
+ * Every join and leave used to fan out immediately to every client, so N
+ * clients reconnecting at once produced N broadcasts of N messages each. A
+ * short trailing window collapses a burst into one broadcast without making
+ * discovery feel laggy.
+ */
 function scheduleBroadcastPeersList(): void {
-  broadcastPeersList().catch((err) =>
-    console.error("[Discovery Hub] Failed to broadcast peer list:", err)
-  );
+  if (peersBroadcastTimer) {
+    peersBroadcastPending = true;
+    return;
+  }
+
+  const run = () => {
+    peersBroadcastTimer = setTimeout(() => {
+      peersBroadcastTimer = null;
+      if (peersBroadcastPending) {
+        peersBroadcastPending = false;
+        run();
+      }
+    }, PEERS_BROADCAST_DEBOUNCE_MS);
+
+    broadcastPeersList().catch((err) =>
+      console.error("[Discovery Hub] Failed to broadcast peer list:", err)
+    );
+  };
+
+  run();
 }
 
 /**
@@ -958,7 +1009,21 @@ async function publishPresenceChange(): Promise<void> {
 
 // Chunks are 1MB plus framing overhead; anything materially larger is abuse.
 const MAX_WS_PAYLOAD_BYTES = 4 * 1024 * 1024;
-const MAX_CONNECTIONS_PER_IP = 10;
+
+/**
+ * Concurrent sockets allowed per client IP.
+ *
+ * A single shared address is normal here, not suspicious: everyone behind one
+ * office NAT, or on a phone carrier's CGNAT, arrives from the same IP. The old
+ * hard limit of 10 rejected the 11th real user, whose client then retried in a
+ * loop — which is exactly the kind of churn that makes everyone else's device
+ * list flicker. Override with MAX_CONNECTIONS_PER_IP.
+ */
+const MAX_CONNECTIONS_PER_IP = (() => {
+  const configured = Number(process.env.MAX_CONNECTIONS_PER_IP);
+  if (Number.isInteger(configured) && configured > 0) return configured;
+  return 64;
+})();
 
 const wss = new WebSocketServer({ noServer: true, maxPayload: MAX_WS_PAYLOAD_BYTES });
 
@@ -1094,9 +1159,8 @@ wss.on("connection", async (ws: WebSocket, request) => {
     console.log(`[Discovery Hub] Joint connection: Name: "${name}" | ID: ${peerId} | IP: ${clientIp}`);
     await registerPeerInDirectory(newPeer);
     await publishPresenceChange();
-    setTimeout(() => {
-      scheduleBroadcastPeersList();
-    }, 100);
+    // Broadcasts are already coalesced, so no ad-hoc delay is needed here.
+    scheduleBroadcastPeersList();
   }
 
   const pingInterval = setInterval(() => {
