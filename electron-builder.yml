@@ -2,6 +2,14 @@ appId: com.zihaaaad.sendfiles
 productName: SendFiles
 copyright: Copyright © SendFiles contributors
 
+# Tells electron-builder to emit the update manifests (latest.yml,
+# latest-linux.yml) that electron-updater reads from the GitHub releases feed.
+# Publishing itself is still done by the workflow, not by electron-builder.
+publish:
+  - provider: github
+    owner: zihaaaad
+    repo: SendFiles
+
 directories:
   output: release-desktop
   buildResources: build
@@ -13,6 +21,10 @@ files:
   - dist-electron/**/*
   - package.json
   - '!**/*.map'
+  # esbuild already bundles every dependency into dist-electron/main.cjs and
+  # resources/server/server.cjs, so shipping node_modules as well was packaging
+  # a second, unused copy of express, redis and the rest.
+  - '!node_modules/**/*'
 
 extraResources:
   - from: dist

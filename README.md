@@ -199,6 +199,28 @@ The renderer is locked down along the lines recommended by the Electron project:
 - A strict Content Security Policy is injected as a response header for the app
   session only, so the browser-hosted deployment is unaffected.
 
+### Automatic updates
+
+The desktop app checks the GitHub releases feed shortly after launch and once
+a day thereafter.
+
+- Nothing downloads without asking. An available update prompts first.
+- Downloads happen in the background and install on quit, so an update never
+  interrupts a transfer that is in progress.
+- A failed or offline check is logged and otherwise ignored; it never
+  interrupts the person using the app.
+- **Help > Check for Updates** triggers a check on demand.
+
+**macOS is excluded.** Squirrel.Mac refuses to update an application that is
+not code-signed, and these builds are not signed. Rather than fail obscurely,
+macOS users get a dialog pointing at the releases page. Signing the app would
+enable automatic updates there too.
+
+Updates are driven by the `latest.yml` and `latest-linux.yml` manifests that
+electron-builder generates and the release workflow attaches to each release.
+A release published without those files will simply report no update
+available.
+
 ### Building it yourself
 
 ```bash

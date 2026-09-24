@@ -279,6 +279,9 @@ jobs:
             release-desktop/*.exe
             release-desktop/*.AppImage
             release-desktop/*.dmg
+            release-desktop/*.blockmap
+            release-desktop/latest.yml
+            release-desktop/latest-linux.yml
           draft: false
           prerelease: ${{ contains(github.ref_name, '-') }}
         env:

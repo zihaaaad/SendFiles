@@ -18,9 +18,12 @@
 
 import { app, BrowserWindow, shell, ipcMain, dialog, session, clipboard, Menu } from "electron";
 import { spawn, ChildProcess } from "child_process";
+import electronUpdater from "electron-updater";
 import path from "path";
 import fs from "fs";
 import os from "os";
+
+const { autoUpdater } = electronUpdater;
 
 interface ServerInfo {
   httpPort: number;
@@ -224,6 +227,128 @@ function applyContentSecurityPolicy(origin: string): void {
   });
 }
 
+// ----------------------------------------------------
+// Automatic updates
+// ----------------------------------------------------
+
+let updateCheckInFlight = false;
+
+/**
+ * Wires up background update checks against the GitHub releases feed.
+ *
+ * Downloads happen in the background and install on quit, so an update never
+ * interrupts a transfer in progress. Nothing is installed without the person
+ * agreeing to it first.
+ *
+ * macOS is deliberately skipped: Squirrel.Mac refuses to apply an update to an
+ * app that is not code-signed, and these builds are not. Pretending otherwise
+ * would just surface a confusing failure, so mac users are pointed at the
+ * releases page instead.
+ */
+function initAutoUpdater(): void {
+  if (!app.isPackaged) return;
+  if (process.platform === "darwin") return;
+
+  autoUpdater.autoDownload = false;
+  autoUpdater.autoInstallOnAppQuit = true;
+
+  autoUpdater.on("error", (err) => {
+    // A failed check must never bother the user; it is not their problem.
+    console.error("[updater]", err?.message || err);
+  });
+
+  autoUpdater.on("update-available", async (info) => {
+    const { response } = await dialog.showMessageBox({
+      type: "info",
+      buttons: ["Download", "Later"],
+      defaultId: 0,
+      cancelId: 1,
+      title: "Update available",
+      message: `SendFiles ${info.version} is available.`,
+      detail: `You are running ${app.getVersion()}. The update downloads in the background and installs the next time you quit.`
+    });
+    if (response === 0) autoUpdater.downloadUpdate().catch(() => {});
+  });
+
+  autoUpdater.on("update-downloaded", async (info) => {
+    const { response } = await dialog.showMessageBox({
+      type: "info",
+      buttons: ["Restart now", "Later"],
+      defaultId: 1,
+      cancelId: 1,
+      title: "Update ready",
+      message: `SendFiles ${info.version} is ready to install.`,
+      detail: "Restarting now will interrupt any transfer in progress."
+    });
+    if (response === 0) {
+      isQuitting = true;
+      stopServer();
+      autoUpdater.quitAndInstall();
+    }
+  });
+
+  // Check shortly after launch so startup is not delayed, then daily.
+  setTimeout(() => checkForUpdates(false), 10000);
+  setInterval(() => checkForUpdates(false), 24 * 60 * 60 * 1000);
+}
+
+async function checkForUpdates(interactive: boolean): Promise<void> {
+  if (!app.isPackaged) {
+    if (interactive) {
+      await dialog.showMessageBox({
+        type: "info",
+        title: "Updates",
+        message: "Update checks are only available in an installed build.",
+        detail: "You are running SendFiles from source."
+      });
+    }
+    return;
+  }
+
+  if (process.platform === "darwin") {
+    if (interactive) {
+      const { response } = await dialog.showMessageBox({
+        type: "info",
+        buttons: ["Open releases page", "Close"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Updates",
+        message: "Automatic updates are not available on macOS.",
+        detail: "These builds are not code-signed, which macOS requires before an application may update itself. You can download the latest version manually."
+      });
+      if (response === 0) {
+        shell.openExternal("https://github.com/zihaaaad/SendFiles/releases/latest");
+      }
+    }
+    return;
+  }
+
+  if (updateCheckInFlight) return;
+  updateCheckInFlight = true;
+  try {
+    const result = await autoUpdater.checkForUpdates();
+    if (interactive && !result?.updateInfo) {
+      await dialog.showMessageBox({
+        type: "info",
+        title: "Updates",
+        message: "SendFiles is up to date.",
+        detail: `Version ${app.getVersion()}.`
+      });
+    }
+  } catch (err: any) {
+    if (interactive) {
+      await dialog.showMessageBox({
+        type: "warning",
+        title: "Update check failed",
+        message: "Could not check for updates.",
+        detail: err?.message || String(err)
+      });
+    }
+  } finally {
+    updateCheckInFlight = false;
+  }
+}
+
 function buildApplicationMenu(info: ServerInfo): void {
   const template: Electron.MenuItemConstructorOptions[] = [
     {
@@ -261,6 +386,11 @@ function buildApplicationMenu(info: ServerInfo): void {
     {
       label: "Help",
       submenu: [
+        {
+          label: "Check for Updates...",
+          click: () => checkForUpdates(true)
+        },
+        { type: "separator" },
         {
           label: "Project Repository",
           click: () => shell.openExternal("https://github.com/zihaaaad/SendFiles")
@@ -360,6 +490,7 @@ if (!gotTheLock) {
     applyContentSecurityPolicy(new URL(serverInfo.httpUrl).origin);
     buildApplicationMenu(serverInfo);
     mainWindow = createWindow(serverInfo);
+    initAutoUpdater();
 
     app.on("activate", () => {
       if (BrowserWindow.getAllWindows().length === 0 && serverInfo) {

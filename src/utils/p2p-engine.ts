@@ -18,12 +18,25 @@ const BUFFER_LOW_WATER_MARK = 65536;
 /**
  * How long to let ICE negotiate before falling back to the WebSocket relay.
  *
- * The old value was 2s, which is fine on a LAN but shorter than a normal
- * STUN-assisted handshake, so WAN transfers were pushed onto the slow relay
- * path almost every time. We now wait longer and, crucially, only give up when
- * ICE has actually stopped making progress.
+ * This is a trade-off, and the right answer depends on how much data is
+ * waiting. Giving up early costs throughput, because the relay is slower than
+ * a direct channel. Waiting costs the user dead time staring at a spinner.
+ *
+ * For a small file the relay finishes in well under the time it would take to
+ * keep waiting for ICE, so we bail out quickly. For a large one the direct
+ * path is worth holding out for.
  */
-const ICE_NEGOTIATION_TIMEOUT_MS = 12000;
+const ICE_TIMEOUT_SMALL_TRANSFER_MS = 2500;
+const ICE_TIMEOUT_LARGE_TRANSFER_MS = 10000;
+
+/** Above this size, a direct connection is worth waiting longer to obtain. */
+const LARGE_TRANSFER_THRESHOLD_BYTES = 32 * 1024 * 1024;
+
+function iceTimeoutForBytes(totalBytes: number): number {
+  return totalBytes >= LARGE_TRANSFER_THRESHOLD_BYTES
+    ? ICE_TIMEOUT_LARGE_TRANSFER_MS
+    : ICE_TIMEOUT_SMALL_TRANSFER_MS;
+}
 
 /**
  * Generates an unguessable client identifier.
@@ -318,33 +331,44 @@ export class P2PSender {
       }
     };
 
-    // Fall back to the relay only once ICE has had a realistic chance to
-    // complete. A connection still in "checking" is making progress, so we give
-    // it one more interval before giving up on the direct path.
+    // ICE reports failure through several different states depending on the
+    // browser and on how it failed. Reacting to all of them means the common
+    // cases never wait for the timeout at all.
+    pc.oniceconnectionstatechange = () => {
+      if (connected) return;
+      if (pc.iceConnectionState === "failed" || pc.iceConnectionState === "closed") {
+        this.onLogMessage(`ICE reported ${pc.iceConnectionState} for [${rxPeerId}]. Switching to relay.`);
+        this.initiateRelayFallback(rxPeerId);
+      }
+    };
+
+    const totalBytes = this.files.reduce((sum, file) => sum + file.size, 0);
+    const iceTimeout = iceTimeoutForBytes(totalBytes);
+
+    // Single deadline, sized to the transfer. The previous version waited 12s
+    // and then granted another 12s whenever ICE was still "checking", so a
+    // connection that was never going to succeed cost the user 24 seconds of
+    // dead time before the relay even started.
     const negotiationDeadline = setTimeout(() => {
       if (connected || this.peers.get(rxPeerId) !== pc) return;
       if (pc.connectionState === "connected") return;
-
-      const stillNegotiating =
-        pc.iceConnectionState === "checking" || pc.iceGatheringState === "gathering";
-      if (stillNegotiating) {
-        this.onLogMessage(`WebRTC still negotiating with [${rxPeerId}], allowing extra time...`);
-        setTimeout(() => {
-          if (!connected && this.peers.get(rxPeerId) === pc && pc.connectionState !== "connected") {
-            this.onLogMessage(`WebRTC negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
-            this.initiateRelayFallback(rxPeerId);
-          }
-        }, ICE_NEGOTIATION_TIMEOUT_MS);
-        return;
-      }
-
-      this.onLogMessage(`WebRTC connection negotiation timed out for [${rxPeerId}]. Falling back to WebSocket relay...`);
+      this.onLogMessage(
+        `No direct channel after ${iceTimeout}ms for [${rxPeerId}]. Switching to relay.`
+      );
       this.initiateRelayFallback(rxPeerId);
-    }, ICE_NEGOTIATION_TIMEOUT_MS);
+    }, iceTimeout);
 
     this.negotiationTimers.set(rxPeerId, negotiationDeadline);
 
     channel.onopen = () => {
+      // The relay may already have taken over and begun streaming; starting a
+      // second queue here would send every chunk twice.
+      const transfer = this.activeTransfers.get(rxPeerId);
+      if (transfer?.isRelaying) {
+        this.onLogMessage(`Direct channel opened late for [${rxPeerId}]; relay already in progress.`);
+        return;
+      }
+
       connected = true;
       const timer = this.negotiationTimers.get(rxPeerId);
       if (timer) clearTimeout(timer);
@@ -725,6 +749,8 @@ export class P2PReceiver {
   private senderPeerId: string | null = null;
   private isRelaying = false;
   private accessToken = "";
+  /** First transport to deliver a header wins; the other is ignored. */
+  private activeTransport: "direct" | "relay" | null = null;
 
   private currentFile: {
     index: number;
@@ -941,6 +967,11 @@ export class P2PReceiver {
     const { type, fileIndex, fileName, fileSize, totalChunks } = control;
 
     if (type === "header") {
+      // Lock onto the first transport that delivers a header. If the direct
+      // channel opens after the relay has already started, its header must be
+      // ignored or the file would be received twice, interleaved.
+      if (this.activeTransport === "relay") return;
+      this.activeTransport = "direct";
       this.onLogMessage(`Retrieving File Header: ${fileName} (${(fileSize / (1024 * 1024)).toFixed(2)} MB)`);
       this.currentFile = {
         index: fileIndex,
@@ -972,6 +1003,8 @@ export class P2PReceiver {
     const { type, fileIndex, fileName, fileSize, totalChunks } = message;
 
     if (type === "header") {
+      if (this.activeTransport === "direct") return;
+      this.activeTransport = "relay";
       this.isRelaying = true;
       this.onStatusChange("transferring");
       this.onLogMessage(`[Relay] Retrieving File Header: ${fileName} (${(fileSize / (1024 * 1024)).toFixed(2)} MB)`);
