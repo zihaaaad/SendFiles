@@ -1,17 +1,20 @@
 {
   "name": "sendfiles",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.1.0",
   "type": "module",
   "bin": "dist/server.cjs",
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build && esbuild server.ts --bundle --platform=node --format=cjs --external:vite --sourcemap --outfile=dist/server.cjs",
     "start": "node dist/server.cjs",
-    "clean": "rm -rf dist server.js",
+    "clean": "rm -rf dist dist-electron release server.js",
     "lint": "tsc --noEmit",
     "package": "npm run build && node -e \"const fs=require('fs'); fs.writeFileSync('dist/package.json', JSON.stringify({name:'sendfiles',bin:'server.cjs',pkg:{assets:['index.html','assets/**/*','sw.js','favicon.png']}}))\" && pkg dist --targets node18-win-x64,node18-linux-x64 --out-path release",
-    "test": "vitest run"
+    "test": "vitest run",
+    "build:electron": "esbuild electron/main.ts electron/preload.ts --bundle --platform=node --format=cjs --target=node20 --external:electron --out-extension:.js=.cjs --outdir=dist-electron",
+    "electron:dev": "npm run build && npm run build:electron && electron dist-electron/main.cjs",
+    "electron:pack": "npm run build && npm run build:electron && electron-builder --publish never"
   },
   "pkg": {
     "assets": [
@@ -45,6 +48,8 @@
     "@types/ws": "^8.18.1",
     "@vitejs/plugin-react": "^5.0.4",
     "autoprefixer": "^10.4.21",
+    "electron": "^33.4.11",
+    "electron-builder": "^25.1.8",
     "esbuild": "^0.25.0",
     "pkg": "^5.8.1",
     "tailwindcss": "^4.1.14",
@@ -52,5 +57,10 @@
     "typescript": "~5.8.2",
     "vite": "^6.2.3",
     "vitest": "^4.1.8"
+  },
+  "main": "dist-electron/main.cjs",
+  "description": "Secure zero-configuration peer-to-peer file sharing over your local network.",
+  "author": {
+    "name": "Zihad Hasan"
   }
 }

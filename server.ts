@@ -1634,6 +1634,18 @@ async function startApp() {
     }
     console.log(`==================================================\n`);
 
+    // Machine-readable handshake for the Electron shell, which spawns this
+    // server as a child process and needs the port that was actually bound
+    // (the preferred one may have been taken).
+    console.log(
+      `SENDFILES_READY ${JSON.stringify({
+        httpPort,
+        httpsPort,
+        httpUrl: localUrlHttp,
+        httpsUrl: localUrlHttps
+      })}`
+    );
+
     if (isLocalDesktop && process.env.NO_OPEN !== "true") {
       const startCommand = process.platform === "darwin" ? "open" : process.platform === "win32" ? "start" : "xdg-open";
       exec(`${startCommand} ${localUrlHttp}`, (err) => {

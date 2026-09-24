@@ -1,0 +1,61 @@
+appId: com.zihaaaad.sendfiles
+productName: SendFiles
+copyright: Copyright © SendFiles contributors
+
+directories:
+  output: release-desktop
+  buildResources: build
+
+# Only the Electron shell goes in the asar. The server and the web assets it
+# serves are unpacked into resources/server, because the server is spawned as a
+# child process and Node cannot execute a file from inside an asar archive.
+files:
+  - dist-electron/**/*
+  - package.json
+  - '!**/*.map'
+
+extraResources:
+  - from: dist
+    to: server
+    filter:
+      - '**/*'
+      - '!*.map'
+      - '!package.json'
+
+win:
+  target:
+    - target: nsis
+      arch: [x64]
+    - target: portable
+      arch: [x64]
+  icon: build/icon.png
+  # Unsigned builds still trip SmartScreen; the portable target exists so users
+  # blocked by installer policy have a route that needs no installation.
+
+nsis:
+  artifactName: SendFiles-${version}-Setup.${ext}
+  oneClick: false
+  perMachine: false
+  allowToChangeInstallationDirectory: true
+  createDesktopShortcut: true
+  createStartMenuShortcut: true
+  shortcutName: SendFiles
+
+portable:
+  artifactName: SendFiles-${version}-portable.exe
+
+linux:
+  target:
+    - target: AppImage
+      arch: [x64]
+  category: Network
+  icon: build/icon.png
+  artifactName: SendFiles-${version}-${arch}.${ext}
+
+mac:
+  target:
+    - target: dmg
+      arch: [x64, arm64]
+  category: public.app-category.utilities
+  icon: build/icon.png
+  artifactName: SendFiles-${version}-${arch}.${ext}
