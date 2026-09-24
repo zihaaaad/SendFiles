@@ -32,10 +32,3 @@ export interface TransferProgress {
   status: TransferState;
   connectionType?: "Direct" | "Relayed";
 }
-
-export interface SignalingMessage {
-  type: string;
-  senderPeerId?: string;
-  targetPeerId?: string;
-  payload?: any;
-}

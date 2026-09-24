@@ -355,7 +355,7 @@ app.get("/api/ip", (req, res) => {
 });
 
 // Fetch local network IPs of the server
-app.get("/api/network-ips", (req, res) => {
+app.get("/api/network-ips", (_req, res) => {
   const ips: string[] = [];
   const interfaces = os.networkInterfaces();
   for (const devName in interfaces) {
@@ -372,7 +372,7 @@ app.get("/api/network-ips", (req, res) => {
 });
 
 // Ice Traversal Configuration Endpoint
-app.get("/api/ice-config", (req, res) => {
+app.get("/api/ice-config", (_req, res) => {
   const iceServers: any[] = [];
 
   if (process.env.OFFLINE_MODE !== "true") {

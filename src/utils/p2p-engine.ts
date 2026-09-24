@@ -3,7 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FileMeta, TransferProgress, TransferState } from "../types";
+import { TransferProgress, TransferState } from "../types";
 import { encryptChunk, decryptChunk, importKeyFromHex } from "./crypto";
 import { saveChunkToDB, compileFilesFromDB, clearRoomFromDB } from "./db";
 import { calculateSpeedAndETA, getWebSocketURL, getIceConfig } from "./webrtc-helper";
@@ -266,9 +266,9 @@ export class P2PSender {
 
   public handleBinaryMessage(data: ArrayBuffer) {
     try {
-      const decoded = decodeBinaryChunk(data);
-      // Currently, clients only send control frames like JSON acks over signaling.
-      // If we expand control signaling over binary, we parse here.
+      // Clients only send control frames (JSON acks) over signalling today.
+      // Validate the frame so malformed input is rejected loudly.
+      decodeBinaryChunk(data);
     } catch (err) {
       console.error("Binary client message parsing failed:", err);
     }

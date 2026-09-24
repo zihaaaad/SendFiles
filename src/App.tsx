@@ -18,9 +18,7 @@ import {
   Copy,
   UploadCloud,
   ChevronRight,
-  Send,
   Lock,
-  Unlock,
   Compass,
   Cpu,
   ArrowLeft
@@ -33,7 +31,7 @@ import {
   deriveSharedKey,
   computeSafetyCode,
 } from "./utils/crypto";
-import { P2PSender, P2PReceiver, decodeBinaryChunk, generateClientId } from "./utils/p2p-engine";
+import { P2PSender, P2PReceiver, generateClientId } from "./utils/p2p-engine";
 import { RoomDetails, TransferProgress } from "./types";
 import QRCode from "qrcode";
 import { clearAllChunksFromDB } from "./utils/db";
@@ -162,7 +160,6 @@ export default function App() {
 
   // 3. Direct Beam States
   const [peers, setPeers] = useState<DiscoveredPeer[]>([]);
-  const [myPublicIp, setMyPublicIp] = useState<string>("Detecting public IP...");
   const [socketStatus, setSocketStatus] = useState<"connecting" | "online" | "offline">("connecting");
   const [discoveryMode, setDiscoveryMode] = useState<"lan" | "strict" | "off">("lan");
   const [socketError, setSocketError] = useState<string>("");
@@ -253,9 +250,6 @@ export default function App() {
     senderTransferRef.current = senderTransfer;
   }, [senderTransfer]);
 
-  const directPcRef = useRef<RTCPeerConnection | null>(null);
-  const directChannelRef = useRef<RTCDataChannel | null>(null);
-  const directConnectTimeoutRef = useRef<number | null>(null);
   // Ephemeral ECDH material for the in-flight Direct Beam transfer.
   const directKeyPairRef = useRef<{ keyPair: CryptoKeyPair; publicKeyHex: string } | null>(null);
 
@@ -470,9 +464,6 @@ export default function App() {
                   .map((p: any) => ({ peerId: p.peerId, name: p.name }));
                 setPeers((prev) => (samePeerList(prev, incoming) ? prev : incoming));
               }
-              if (message.yourIp) {
-                setMyPublicIp(message.yourIp);
-              }
               if (message.discoveryMode) {
                 setDiscoveryMode(message.discoveryMode);
               }
@@ -661,13 +652,13 @@ export default function App() {
       console.log(`[Direct Sender] ${msg}`);
     };
 
-    sender.onPeerStatusChange = (pid, status) => {
+    sender.onPeerStatusChange = (_pid, status) => {
       if (status === "failed") {
         setSenderTransfer(prev => prev ? { ...prev, status: "failed" } : null);
       }
     };
 
-    sender.onProgressUpdate = (pid, progress) => {
+    sender.onProgressUpdate = (_pid, progress) => {
       setSenderTransfer(prev => {
         if (!prev) return null;
         let finalStatus: typeof prev.status = "transferring";
@@ -1171,10 +1162,21 @@ export default function App() {
                         <Smartphone size={18} />
                       </div>
                       <div className="space-y-1.5 max-w-sm mx-auto">
-                        <h3 className="text-xs font-bold text-slate-900">Waiting for other devices...</h3>
-                        <p className="text-[11px] text-slate-650 leading-relaxed font-medium">
-                          Open this URL on your phone or tablet to pair instantly.
-                        </p>
+                        {discoveryMode === "off" ? (
+                          <>
+                            <h3 className="text-xs font-bold text-slate-900">Device discovery is turned off</h3>
+                            <p className="text-[11px] text-slate-650 leading-relaxed font-medium">
+                              This server has discovery disabled, so nearby devices will not appear here. Use Create Link to share files instead.
+                            </p>
+                          </>
+                        ) : (
+                          <>
+                            <h3 className="text-xs font-bold text-slate-900">Waiting for other devices...</h3>
+                            <p className="text-[11px] text-slate-650 leading-relaxed font-medium">
+                              Open this URL on your phone or tablet to pair instantly.
+                            </p>
+                          </>
+                        )}
                       </div>
                       
                       <button

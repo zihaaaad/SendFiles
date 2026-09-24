@@ -3,9 +3,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import { FileMeta, TransferProgress, TransferState } from "../types";
 
-const CHUNK_SIZE = 1048576; // 1MB LAN-optimized chunking size
 
 const defaultPublicIceServers: RTCIceServer[] = [
   { urls: "stun:stun.l.google.com:19302" },

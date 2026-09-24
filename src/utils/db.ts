@@ -18,7 +18,7 @@ function getDB(): Promise<IDBDatabase> {
     request.onerror = () => reject(request.error);
     request.onsuccess = () => resolve(request.result);
 
-    request.onupgradeneeded = (event) => {
+    request.onupgradeneeded = () => {
       const db = request.result;
       if (!db.objectStoreNames.contains(CHUNK_STORE)) {
         // Create an index on room + fileIndex + chunkIndex for linear retrieval

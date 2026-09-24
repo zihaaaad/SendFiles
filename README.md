@@ -2,7 +2,7 @@
 
 SendFiles P2P is a zero-configuration peer-to-peer file sharing application. It enables instant device discovery on local networks and secure, direct-channel file transfers via WebRTC. For networks with restrictive NAT configurations, the application automatically rolls back to an asynchronous WebSocket chunk relay.
 
-The frontend is implemented as a single-page application built on React 19, Tailwind CSS v4, and Motion. The backend is powered by an Express server that acts as a WebSocket signaling gateway and provides a public IP discovery endpoint.
+The frontend is a single-page application built on React 19 and Tailwind CSS v4. The backend is an Express server acting as a WebSocket signalling gateway, with an optional Electron shell that wraps both into a desktop application.
 
 ---
 
@@ -269,3 +269,31 @@ If you serve the frontend separately from the signalling backend, set `VITE_SIGN
 - **`DISCOVERY_MODE` matters on a public host.** Deploying with `lan` behind a reverse proxy places every visitor in one discovery group. The default is `strict` for non-desktop hosts; do not override it without understanding why.
 - **Set `TRUST_PROXY` when behind a proxy.** Otherwise every client resolves to the proxy's address, which degrades both rate limiting and discovery scoping.
 - **No forward secrecy across sessions for lockers**; the locker key is generated per locker and lives as long as the link does.
+
+---
+
+## Known Limitations
+
+Current, honest constraints. None of these are bugs to be reported; they are
+design trade-offs or unfinished work.
+
+- **Direct Beam key agreement is unauthenticated.** A malicious signalling
+  server could substitute its own keys. Comparing the six-digit safety code
+  shown on both devices is the mitigation, and it is a manual step.
+- **Relay throughput is stop-and-wait.** The WebSocket fallback waits for an
+  acknowledgement per 1 MB chunk, so throughput is bounded by round-trip
+  latency. A windowed scheme would help if the relay path matters to you.
+- **Transfer resume is not implemented.** The protocol carries a
+  `resumeChunkIndex` field that is always sent as zero. An interrupted
+  transfer restarts the current file.
+- **Desktop builds are not code-signed.** Windows SmartScreen and macOS
+  Gatekeeper will warn on first run. Signing requires a purchased certificate.
+- **`pkg` is archived upstream.** It is used only at release time to produce
+  the console binaries and carries one unfixable moderate advisory. It is a
+  development dependency and is not part of anything shipped to users. The
+  alternatives are to drop the console binaries in favour of the desktop app
+  and portable packages, or to migrate to Node's built-in single-executable
+  support.
+- **License headers say Apache-2.0 while `LICENSE` is MIT.** This predates the
+  current work and has been left alone deliberately, since which one is
+  intended is the maintainer's call.
