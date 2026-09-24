@@ -858,7 +858,7 @@
         Share files of any size directly from device to device. Zero configuration, completely local, E2E encrypted, and bypasses browser memory constraints.
       </p>
       <div class="hero-ctas">
-        <a href="https://github.com/zihaaaad/SendFiles/releases" class="btn btn-primary"><i data-lucide="download"></i> Download Executables</a>
+        <a href="#download" class="btn btn-primary"><i data-lucide="download"></i> Download Executables</a>
         <a href="https://github.com/zihaaaad/SendFiles" class="btn btn-secondary"><i data-lucide="github"></i> View Source Code</a>
       </div>
       
@@ -1007,8 +1007,8 @@
           <h3>Windows Platform</h3>
           <p class="meta">Windows 10/11 x64 architecture</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-windows.exe" class="btn btn-primary"><i data-lucide="download"></i> Standalone .EXE</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-portable-windows.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (WDAC Bypass)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-windows.exe" class="btn btn-primary"><i data-lucide="download"></i> Standalone .EXE</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-windows.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (WDAC Bypass)</a>
           </div>
         </div>
         <!-- Linux -->
@@ -1017,8 +1017,8 @@
           <h3>Linux Distribution</h3>
           <p class="meta">Ubuntu/Debian/CentOS x64 system</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-linux" class="btn btn-primary"><i data-lucide="download"></i> Standalone Binary</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-portable-linux.tar.gz" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .TAR.GZ</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-linux" class="btn btn-primary"><i data-lucide="download"></i> Standalone Binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-linux.tar.gz" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .TAR.GZ</a>
           </div>
         </div>
         <!-- macOS -->
@@ -1027,9 +1027,9 @@
           <h3>macOS Platform</h3>
           <p class="meta">Intel & Apple Silicon (M1/M2/M3) chips</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-macos-silicon" class="btn btn-primary"><i data-lucide="download"></i> Apple Silicon Binary</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-macos-intel" class="btn btn-primary"><i data-lucide="download"></i> Intel Core Binary</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/download/v1.0.0/sendfiles-portable-macos.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (Signed)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-macos-silicon" class="btn btn-primary"><i data-lucide="download"></i> Apple Silicon Binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-macos-intel" class="btn btn-primary"><i data-lucide="download"></i> Intel Core Binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-macos.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (Signed)</a>
           </div>
         </div>
       </div>
@@ -1131,12 +1131,12 @@
               badge.innerHTML = `<span></span> ${latestTag} Stable Release`;
             }
             
-            // Update all download URLs containing '/releases/download/v1.0.0/' or similar
+            // Update all download URLs containing '/releases/latest/download/' or similar
             const downloadLinks = document.querySelectorAll("a[href*='/releases/download/']");
             downloadLinks.forEach(link => {
               const currentHref = link.getAttribute("href");
               if (currentHref) {
-                // Replace any version tag (e.g. /releases/download/v1.0.0/...) with the latest tag
+                // Replace any version tag (e.g. /releases/latest/download/...) with the latest tag
                 const updatedHref = currentHref.replace(/\/releases\/download\/[^/]+/, `/releases/download/${latestTag}`);
                 link.setAttribute("href", updatedHref);
               }
