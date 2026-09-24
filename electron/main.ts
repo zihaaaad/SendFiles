@@ -234,6 +234,15 @@ function applyContentSecurityPolicy(origin: string): void {
 let updateCheckInFlight = false;
 
 /**
+ * True for the single-file portable build.
+ *
+ * electron-builder sets PORTABLE_EXECUTABLE_DIR only for that target.
+ */
+function isPortableBuild(): boolean {
+  return Boolean(process.env.PORTABLE_EXECUTABLE_DIR);
+}
+
+/**
  * Wires up background update checks against the GitHub releases feed.
  *
  * Downloads happen in the background and install on quit, so an update never
@@ -248,9 +257,16 @@ let updateCheckInFlight = false;
 function initAutoUpdater(): void {
   if (!app.isPackaged) return;
   if (process.platform === "darwin") return;
+  // A portable build is a single file the person chose to run without
+  // installing. Updating it would mean running an installer they deliberately
+  // avoided, so it is left alone.
+  if (isPortableBuild()) return;
 
   autoUpdater.autoDownload = false;
-  autoUpdater.autoInstallOnAppQuit = true;
+  // Never install as a side effect of quitting. An update is applied only when
+  // the person explicitly chooses to restart for it; otherwise closing the app
+  // would silently install software.
+  autoUpdater.autoInstallOnAppQuit = false;
 
   autoUpdater.on("error", (err) => {
     // A failed check must never bother the user; it is not their problem.
@@ -260,12 +276,15 @@ function initAutoUpdater(): void {
   autoUpdater.on("update-available", async (info) => {
     const { response } = await dialog.showMessageBox({
       type: "info",
-      buttons: ["Download", "Later"],
-      defaultId: 0,
+      buttons: ["Download", "Not now"],
+      // "Not now" is the default and the cancel action, so dismissing this
+      // dialog or closing the app while it is open never starts a download
+      // the person did not ask for. These are over 100 MB.
+      defaultId: 1,
       cancelId: 1,
       title: "Update available",
       message: `SendFiles ${info.version} is available.`,
-      detail: `You are running ${app.getVersion()}. The update downloads in the background and installs the next time you quit.`
+      detail: `You are running ${app.getVersion()}. Downloading happens in the background, and nothing is installed until you choose to restart.`
     });
     if (response === 0) autoUpdater.downloadUpdate().catch(() => {});
   });
@@ -273,12 +292,12 @@ function initAutoUpdater(): void {
   autoUpdater.on("update-downloaded", async (info) => {
     const { response } = await dialog.showMessageBox({
       type: "info",
-      buttons: ["Restart now", "Later"],
+      buttons: ["Restart and install", "Not now"],
       defaultId: 1,
       cancelId: 1,
       title: "Update ready",
       message: `SendFiles ${info.version} is ready to install.`,
-      detail: "Restarting now will interrupt any transfer in progress."
+      detail: "Restarting will interrupt any transfer in progress. If you choose Not now, the update installs the next time you start SendFiles from the installer."
     });
     if (response === 0) {
       isQuitting = true;
@@ -315,6 +334,24 @@ async function checkForUpdates(interactive: boolean): Promise<void> {
         title: "Updates",
         message: "Automatic updates are not available on macOS.",
         detail: "These builds are not code-signed, which macOS requires before an application may update itself. You can download the latest version manually."
+      });
+      if (response === 0) {
+        shell.openExternal("https://github.com/zihaaaad/SendFiles/releases/latest");
+      }
+    }
+    return;
+  }
+
+  if (isPortableBuild()) {
+    if (interactive) {
+      const { response } = await dialog.showMessageBox({
+        type: "info",
+        buttons: ["Open releases page", "Close"],
+        defaultId: 0,
+        cancelId: 1,
+        title: "Updates",
+        message: "This is the portable build, which does not update itself.",
+        detail: "Updating would mean running the installer you chose to avoid. Download a newer portable build instead."
       });
       if (response === 0) {
         shell.openExternal("https://github.com/zihaaaad/SendFiles/releases/latest");

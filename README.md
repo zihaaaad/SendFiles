@@ -204,12 +204,16 @@ The renderer is locked down along the lines recommended by the Electron project:
 The desktop app checks the GitHub releases feed shortly after launch and once
 a day thereafter.
 
-- Nothing downloads without asking. An available update prompts first.
-- Downloads happen in the background and install on quit, so an update never
-  interrupts a transfer that is in progress.
+- Nothing downloads without asking, and the prompt defaults to declining.
+  These downloads are over 100 MB, so an accidentally dismissed dialog must
+  not start one.
+- Nothing installs as a side effect of quitting. An update is applied only
+  when you explicitly choose to restart for it.
 - A failed or offline check is logged and otherwise ignored; it never
   interrupts the person using the app.
 - **Help > Check for Updates** triggers a check on demand.
+- The portable build never updates itself, since doing so would mean running
+  the installer you chose to avoid. It points at the releases page instead.
 
 **macOS is excluded.** Squirrel.Mac refuses to update an application that is
 not code-signed, and these builds are not signed. Rather than fail obscurely,
