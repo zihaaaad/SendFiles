@@ -1490,6 +1490,66 @@ setInterval(() => {
   }
 }, PEER_DIRECTORY_REFRESH_MS);
 
+/**
+ * Probes ports starting at `preferred` and returns the first one this server
+ * can bind, or null if none in the range are free.
+ *
+ * The probe binds and releases a throwaway listener so the caller can then
+ * listen normally. EADDRINUSE and EACCES are both treated as "taken" — Windows
+ * reports an excluded or reserved port range as EACCES.
+ */
+async function findAvailablePort(
+  preferred: number,
+  label: string,
+  reserved: Set<number>,
+  attempts = 10
+): Promise<number | null> {
+  for (let offset = 0; offset < attempts; offset++) {
+    const candidate = preferred + offset;
+    // A probe only proves the port was free a moment ago, so ports already
+    // handed out in this same pass must be skipped explicitly.
+    if (reserved.has(candidate)) continue;
+
+    const free = await new Promise<boolean>((resolve) => {
+      const probe = http.createServer();
+      probe.once("error", () => resolve(false));
+      probe.once("listening", () => probe.close(() => resolve(true)));
+      probe.listen(candidate, "0.0.0.0");
+    });
+
+    if (free) {
+      if (candidate !== preferred) {
+        console.warn(
+          `\x1b[33m[warn] ${label} port ${preferred} is unavailable; using ${candidate} instead.\x1b[0m`
+        );
+      }
+      reserved.add(candidate);
+      return candidate;
+    }
+  }
+  return null;
+}
+
+/**
+ * Turns a listen failure into a readable message instead of an unhandled
+ * 'error' event. A probe can still lose a race with another process, and a
+ * double-clicked binary must not die with a raw Node stack trace.
+ */
+function attachListenErrorHandler(server: http.Server | https.Server, label: string): void {
+  server.on("error", (err: NodeJS.ErrnoException) => {
+    if (err.code === "EADDRINUSE" || err.code === "EACCES") {
+      console.error(
+        `\n\x1b[31m${label} could not start: port is already in use.\n` +
+        `Pick your own ports, for example:\n` +
+        `  PORT=8080 HTTPS_PORT=8443 ${isPackaged ? "sendfiles" : "npm start"}\x1b[0m\n`
+      );
+    } else {
+      console.error(`\n\x1b[31m${label} server error: ${err.message}\x1b[0m\n`);
+    }
+    process.exit(1);
+  });
+}
+
 async function startApp() {
   await initRedis();
   if (isDev) {
@@ -1512,11 +1572,30 @@ async function startApp() {
     });
   }
 
-  server.listen(PORT, "0.0.0.0", () => {});
+  // Find free ports before binding. A packaged binary is launched by
+  // double-clicking, and port 3000 is very often already taken; the process
+  // used to die with an unhandled 'error' event and a raw Node stack trace.
+  const reservedPorts = new Set<number>();
+  const httpPort = await findAvailablePort(PORT, "HTTP", reservedPorts);
+  const httpsPort = await findAvailablePort(HTTPS_PORT, "HTTPS", reservedPorts);
 
-  httpsServer.listen(HTTPS_PORT, "0.0.0.0", () => {
-    const localUrlHttp = `http://localhost:${PORT}`;
-    const localUrlHttps = `https://localhost:${HTTPS_PORT}`;
+  attachListenErrorHandler(server, "HTTP");
+  attachListenErrorHandler(httpsServer, "HTTPS");
+
+  if (httpPort === null || httpsPort === null) {
+    console.error(
+      `\n\x1b[31mCould not start: no free port found near ${PORT}/${HTTPS_PORT}.\n` +
+      `Close whatever is using those ports, or pick your own:\n` +
+      `  PORT=8080 HTTPS_PORT=8443 ${isPackaged ? "sendfiles" : "npm start"}\x1b[0m\n`
+    );
+    process.exit(1);
+  }
+
+  server.listen(httpPort, "0.0.0.0", () => {});
+
+  httpsServer.listen(httpsPort, "0.0.0.0", () => {
+    const localUrlHttp = `http://localhost:${httpPort}`;
+    const localUrlHttps = `https://localhost:${httpsPort}`;
     console.log(`\n==================================================`);
     console.log(`P2P Direct SendFiles platform ready & listening.`);
     console.log(`HTTP Local Access URL:  \x1b[36m${localUrlHttp}\x1b[0m`);
@@ -1528,8 +1607,8 @@ async function startApp() {
       if (iface) {
         for (const alias of iface) {
           if (alias.family === "IPv4" && !alias.internal) {
-            console.log(`Network Access HTTP:  \x1b[36mhttp://${alias.address}:${PORT}\x1b[0m`);
-            console.log(`Network Access HTTPS: \x1b[36mhttps://${alias.address}:${HTTPS_PORT}\x1b[0m (For mobile/secure context)`);
+            console.log(`Network Access HTTP:  \x1b[36mhttp://${alias.address}:${httpPort}\x1b[0m`);
+            console.log(`Network Access HTTPS: \x1b[36mhttps://${alias.address}:${httpsPort}\x1b[0m (For mobile/secure context)`);
           }
         }
       }
