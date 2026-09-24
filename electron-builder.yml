@@ -33,7 +33,9 @@ win:
   # blocked by installer policy have a route that needs no installation.
 
 nsis:
-  artifactName: SendFiles-${version}-Setup.${ext}
+  # Version-less so https://.../releases/latest/download/<name> stays a valid
+  # permanent link. The version is shown in the app and on the release page.
+  artifactName: SendFiles-Setup.${ext}
   oneClick: false
   perMachine: false
   allowToChangeInstallationDirectory: true
@@ -42,7 +44,7 @@ nsis:
   shortcutName: SendFiles
 
 portable:
-  artifactName: SendFiles-${version}-portable.exe
+  artifactName: SendFiles-portable.exe
 
 linux:
   target:
@@ -50,7 +52,7 @@ linux:
       arch: [x64]
   category: Network
   icon: build/icon.png
-  artifactName: SendFiles-${version}-${arch}.${ext}
+  artifactName: SendFiles-${arch}.${ext}
 
 mac:
   target:
@@ -58,4 +60,4 @@ mac:
       arch: [x64, arm64]
   category: public.app-category.utilities
   icon: build/icon.png
-  artifactName: SendFiles-${version}-${arch}.${ext}
+  artifactName: SendFiles-${arch}.${ext}

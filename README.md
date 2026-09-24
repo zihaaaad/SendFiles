@@ -82,10 +82,10 @@ A normal windowed application. It runs the sharing server in the background and 
 
 1. Open the **GitHub Releases** page of this repository.
 2. Download the build for your operating system:
-   - **Windows (installer)**: `SendFiles-<version>-Setup.exe`
-   - **Windows (no install)**: `SendFiles-<version>-portable.exe`
-   - **Linux**: `SendFiles-<version>-x64.AppImage`
-   - **macOS**: `SendFiles-<version>-<arch>.dmg`
+   - **Windows (installer)**: `SendFiles-Setup.exe`
+   - **Windows (no install)**: `SendFiles-portable.exe`
+   - **Linux**: `SendFiles-x86_64.AppImage`
+   - **macOS**: `SendFiles-arm64.dmg` (Apple Silicon) or `SendFiles-x64.dmg` (Intel)
 3. Launch it. No Node.js installation is required.
 
 These builds are not code-signed. Windows SmartScreen shows "Windows protected your PC" on first run: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open** the first time.

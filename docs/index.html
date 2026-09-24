@@ -706,6 +706,23 @@
       max-width: 700px;
       margin: 3rem auto 0.5rem auto;
       text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.6rem;
+      flex-wrap: wrap;
+    }
+
+    .tag-recommended {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.6px;
+      color: var(--primary);
+      background: var(--primary-glow);
+      border: 1px solid rgba(38, 92, 52, 0.2);
+      border-radius: 9999px;
+      padding: 0.15rem 0.6rem;
     }
 
     .download-group-heading:first-of-type {
@@ -1032,8 +1049,8 @@
         <p>The desktop app is the recommended option. The command-line builds remain available if you prefer to run SendFiles as a background service.</p>
       </div>
 
-      <h3 class="download-group-heading">Desktop application</h3>
-      <p class="download-group-note">A normal windowed application. It runs the sharing server in the background and shows the interface in its own window. Other devices on your Wi-Fi connect to the LAN address displayed inside the app.</p>
+      <h3 class="download-group-heading">Desktop app <span class="tag-recommended">Recommended</span></h3>
+      <p class="download-group-note">A normal windowed application, like any other program on your computer. It runs the sharing server in the background and shows the interface in its own window. Other devices on your Wi-Fi connect to the LAN address displayed inside the app.</p>
 
       <div class="download-grid">
         <div class="download-card glass">
@@ -1041,8 +1058,8 @@
           <h3>Windows</h3>
           <p class="meta">Windows 10/11, x64</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-primary"><i data-lucide="download"></i> Installer (Setup.exe)</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable (no install)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/SendFiles-Setup.exe" class="btn btn-primary"><i data-lucide="download"></i> Installer</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/SendFiles-portable.exe" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable (no install)</a>
           </div>
         </div>
         <div class="download-card glass">
@@ -1050,7 +1067,7 @@
           <h3>Linux</h3>
           <p class="meta">x64 AppImage</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-primary"><i data-lucide="download"></i> AppImage</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/SendFiles-x86_64.AppImage" class="btn btn-primary"><i data-lucide="download"></i> AppImage</a>
           </div>
         </div>
         <div class="download-card glass">
@@ -1058,7 +1075,8 @@
           <h3>macOS</h3>
           <p class="meta">Intel and Apple Silicon</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-primary"><i data-lucide="download"></i> Disk image (.dmg)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/SendFiles-arm64.dmg" class="btn btn-primary"><i data-lucide="download"></i> Apple Silicon</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/SendFiles-x64.dmg" class="btn btn-secondary"><i data-lucide="download"></i> Intel</a>
           </div>
         </div>
       </div>
@@ -1067,8 +1085,8 @@
         <strong>Unsigned builds</strong>: these applications are not code-signed. Windows SmartScreen shows "Windows protected your PC" the first time you run one, so choose <strong>More info</strong> then <strong>Run anyway</strong>. On macOS, right-click the app and choose <strong>Open</strong> for the first launch.
       </p>
 
-      <h3 class="download-group-heading">Command-line builds</h3>
-      <p class="download-group-note">Single-file executables that start the server and open your default browser, plus portable archives that run on an official Node.js runtime for machines under an application control policy.</p>
+      <h3 class="download-group-heading">Alternative: run it as a server</h3>
+      <p class="download-group-note">You do not need these if you downloaded the desktop app above. They start the same server from a terminal and open your default browser instead of giving you an application window. Use them to run SendFiles headless, or if an application control policy blocks the desktop app.</p>
 
       <div class="download-grid">
         <div class="download-card glass">
@@ -1188,37 +1206,34 @@
     // Initialize Lucide Icons
     lucide.createIcons();
 
-    // Fetch latest release and dynamically update download links
-    async function updateReleaseVersion() {
+    // Show the current version in the hero badge.
+    //
+    // Download links are not touched here: every one of them points at
+    // /releases/latest/download/<stable-name>, which GitHub resolves to the
+    // newest release on its own. The previous version of this script tried to
+    // rewrite versioned links, and its selector had stopped matching anything.
+    //
+    // This is a best-effort enhancement. The badge already reads sensibly
+    // without it, and unauthenticated GitHub API calls are rate limited.
+    async function showLatestVersion() {
       try {
         const res = await fetch("https://api.github.com/repos/zihaaaad/SendFiles/releases/latest");
-        if (res.ok) {
-          const data = await res.json();
-          const latestTag = data.tag_name;
-          if (latestTag) {
-            // Update version badge
-            const badge = document.querySelector(".hero-badge");
-            if (badge) {
-              badge.innerHTML = `<span></span> ${latestTag} Stable Release`;
-            }
-            
-            // Update all download URLs containing '/releases/latest/download/' or similar
-            const downloadLinks = document.querySelectorAll("a[href*='/releases/download/']");
-            downloadLinks.forEach(link => {
-              const currentHref = link.getAttribute("href");
-              if (currentHref) {
-                // Replace any version tag (e.g. /releases/latest/download/...) with the latest tag
-                const updatedHref = currentHref.replace(/\/releases\/download\/[^/]+/, `/releases/download/${latestTag}`);
-                link.setAttribute("href", updatedHref);
-              }
-            });
-          }
+        if (!res.ok) return;
+        const { tag_name: latestTag } = await res.json();
+        if (!latestTag) return;
+
+        const badge = document.querySelector(".hero-badge");
+        if (badge) {
+          badge.textContent = "";
+          const dot = document.createElement("span");
+          badge.appendChild(dot);
+          badge.appendChild(document.createTextNode(` ${latestTag} available`));
         }
-      } catch (e) {
-        console.error("Failed to fetch latest release from GitHub:", e);
+      } catch {
+        // Leave the static badge text in place.
       }
     }
-    updateReleaseVersion();
+    showLatestVersion();
 
     // Navbar scroll effect
     window.addEventListener('scroll', () => {

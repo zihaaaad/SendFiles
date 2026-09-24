@@ -173,10 +173,11 @@ jobs:
 
             | Platform | File |
             | --- | --- |
-            | Windows (installer) | `SendFiles-<version>-Setup.exe` |
-            | Windows (no install) | `SendFiles-<version>-portable.exe` |
-            | Linux | `SendFiles-<version>-x64.AppImage` |
-            | macOS | `SendFiles-<version>-<arch>.dmg` |
+            | Windows (installer) | `SendFiles-Setup.exe` |
+            | Windows (no install) | `SendFiles-portable.exe` |
+            | Linux | `SendFiles-x86_64.AppImage` |
+            | macOS (Apple Silicon) | `SendFiles-arm64.dmg` |
+            | macOS (Intel) | `SendFiles-x64.dmg` |
 
             These builds are not code-signed. Windows SmartScreen will show
             "Windows protected your PC": choose More info, then Run anyway. On
