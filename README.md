@@ -77,15 +77,32 @@ To run the application locally, follow these steps:
 
 ### Installation & Launching
 
-#### Option A: Standalone Executables (Zero-Setup, Recommended)
-For a zero-dependency, single-click setup that does not require installing Node.js or npm:
-1. Navigate to the **GitHub Releases** page of this repository.
-2. Download the pre-compiled standalone package for your operating system:
+#### Option A: Desktop Application (Recommended)
+A normal windowed application. It runs the sharing server in the background and shows the interface in its own window; other devices on your Wi-Fi connect to the LAN address displayed inside the app.
+
+1. Open the **GitHub Releases** page of this repository.
+2. Download the build for your operating system:
+   - **Windows (installer)**: `SendFiles-<version>-Setup.exe`
+   - **Windows (no install)**: `SendFiles-<version>-portable.exe`
+   - **Linux**: `SendFiles-<version>-x64.AppImage`
+   - **macOS**: `SendFiles-<version>-<arch>.dmg`
+3. Launch it. No Node.js installation is required.
+
+These builds are not code-signed. Windows SmartScreen shows "Windows protected your PC" on first run: choose **More info**, then **Run anyway**. On macOS, right-click the app and choose **Open** the first time.
+
+#### Option B: Standalone Executables (Console)
+A single-file program that starts the server and opens your default browser. It leaves a terminal window open for as long as it runs.
+
+1. Open the **GitHub Releases** page of this repository.
+2. Download the pre-compiled standalone binary for your operating system:
    - **Windows**: `sendfiles-windows.exe`
    - **Linux**: `sendfiles-linux`
-3. Double-click the executable to launch. It will automatically boot the server, resolve network IPv4 connections, and open your web browser.
+   - **macOS**: `sendfiles-macos-intel` or `sendfiles-macos-silicon`
+3. Double-click the executable to launch. It boots the server, resolves network IPv4 addresses, and opens your web browser.
 
-#### Option B: One-Click Source Launchers (Simplified)
+If port 3000 is already taken, SendFiles moves to the next free port and prints the address it selected. Set `PORT` and `HTTPS_PORT` to choose your own.
+
+#### Option C: One-Click Source Launchers (Simplified)
 For running from source code with automatic dependency resolution:
 - **Windows**: Double-click the `run-windows.bat` launcher in the project root.
 - **Linux / macOS**: Run the launcher from your terminal:
@@ -94,7 +111,7 @@ For running from source code with automatic dependency resolution:
   ./run-linux.sh
   ```
 
-#### Option C: Manual Commands
+#### Option D: Manual Commands
 1. Clone the repository and navigate into the project directory.
 2. Install the Node dependencies:
    ```bash
@@ -114,6 +131,89 @@ To test file sharing between two local devices:
 2. Identify the local IPv4 address of the host machine (e.g., `192.168.1.50`).
 3. Open the browser on your mobile or secondary device and navigate to: `http://192.168.1.50:3000`.
 4. The two devices will pair and appear in each other's Direct Beam discovery tab.
+
+### Configuration Reference
+
+All of these are optional. Copy `.env.example` to `.env` to set them, or pass
+them as environment variables.
+
+| Variable | Default | Purpose |
+| --- | --- | --- |
+| `PORT` | `3000` | HTTP listen port. If taken, the next free port is used. |
+| `HTTPS_PORT` | `3001` | HTTPS listen port, same fallback behaviour. |
+| `TRUST_PROXY` | unset | Number of reverse proxies in front of the app, or `true` to trust every hop. Required on any hosted deployment. |
+| `DISCOVERY_MODE` | auto | `lan`, `strict` or `off`. Defaults to `lan` on a desktop or packaged build and `strict` everywhere else. |
+| `MAX_CONNECTIONS_PER_IP` | `64` | Concurrent signalling sockets allowed from one address. Raise it if many users share a NAT. |
+| `ROOM_TOKEN_SECRET` | random | HMAC secret for locker access tokens. Set it to keep tokens valid across restarts and across instances. |
+| `OFFLINE_MODE` | unset | `true` disables public STUN servers for a strictly offline LAN, avoiding WebRTC timeouts. |
+| `STUN_SERVER_URL` | unset | Additional STUN server. |
+| `TURN_SERVER_URL` | unset | TURN server URL; also set `TURN_SERVER_USERNAME` and `TURN_SERVER_CREDENTIAL`. |
+| `REDIS_URL` | unset | Enables shared locker state, cross-instance relay and a cluster-wide peer directory. |
+| `NO_OPEN` | unset | `true` stops the server opening a browser on start. |
+| `VITE_SIGNALING_SERVER` | unset | Build-time only. Points a statically hosted frontend at a separate signalling backend. |
+
+---
+
+## Desktop Application
+
+The desktop build is an Electron shell around the same server and web UI, not a
+separate implementation.
+
+### How it works
+
+SendFiles is a server that other devices connect to, so the desktop app cannot
+simply embed the interface and drop the server. Instead:
+
+1. The Electron main process spawns `server.cjs` as a child process, using
+   Electron's own binary in Node mode (`ELECTRON_RUN_AS_NODE`), so no separate
+   Node.js runtime is shipped.
+2. The server binds a port, falling forward if the preferred one is taken, and
+   prints a `SENDFILES_READY` line containing the ports it actually bound.
+3. The main process reads that line and loads the URL in a `BrowserWindow`.
+4. The server keeps serving the LAN for as long as the window is open, so phones
+   and other machines still reach it at the network address shown in the app.
+
+Closing the window stops the server. Launching a second copy focuses the
+existing window rather than starting a competing server.
+
+### Security posture
+
+The renderer is locked down along the lines recommended by the Electron project:
+
+| Setting | Value |
+| --- | --- |
+| `contextIsolation` | enabled |
+| `nodeIntegration` | disabled |
+| `sandbox` | enabled |
+| `webSecurity` | enabled |
+| `allowRunningInsecureContent` | disabled |
+
+- The preload script exposes exactly three read-only IPC calls through
+  `contextBridge`: server info, LAN URL, and app version. Nothing in the bridge
+  touches the filesystem or spawns a process.
+- Navigation is pinned to the local server origin. `window.open` is denied, and
+  external `https://` links are handed to the system browser via
+  `shell.openExternal`.
+- Webview attachment is blocked and all permission requests (camera, microphone,
+  geolocation) are denied.
+- A strict Content Security Policy is injected as a response header for the app
+  session only, so the browser-hosted deployment is unaffected.
+
+### Building it yourself
+
+```bash
+npm install
+npm run electron:dev     # build everything and launch the app
+npm run electron:pack    # produce installers for the current platform
+```
+
+Packaged output lands in `release-desktop/`. Installer formats have to be built
+on their own operating system, which is why CI runs the desktop job on a
+Windows, Linux and macOS matrix.
+
+The server and its web assets are deliberately kept out of the asar archive and
+unpacked to `resources/server`, because Node cannot execute a file from inside
+an asar.
 
 ---
 

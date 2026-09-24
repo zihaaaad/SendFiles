@@ -161,38 +161,60 @@ jobs:
           tag_name: ${{ github.ref_name }}
           name: ${{ github.ref_name }}
           body: |
-            ## SendFiles Releases
-            
-            Welcome to the latest release of **SendFiles**! Pick whichever suits you:
+            ## SendFiles
 
-            ### 🖥️ Option 1: Desktop App (Recommended)
-            A real windowed application. It runs the sharing server in the
-            background and opens the interface in its own window — other devices
-            on your Wi-Fi still connect to the LAN address shown inside the app.
-            * 🪟 **Windows Installer**: `SendFiles-<version>-Setup.exe`
-            * 🪟 **Windows Portable** (no install): `SendFiles-<version>-portable.exe`
-            * 🐧 **Linux**: `SendFiles-<version>-x64.AppImage`
-            * 🍎 **macOS**: `SendFiles-<version>-<arch>.dmg`
+            Three ways to run it. Pick whichever suits you.
 
-            These are unsigned, so Windows SmartScreen shows "Windows protected
-            your PC" — click **More info → Run anyway**. On macOS, right-click
-            the app and choose **Open** the first time.
+            ### Option 1: Desktop App (recommended)
 
-            ### 🚀 Option 2: Standalone Single-File Executables (Zero Setup)
-            A console app that starts the server and opens your default browser.
-            * 🪟 **Windows**: `sendfiles-windows.exe`
-            * 🐧 **Linux**: `sendfiles-linux`
-            * 🍎 **macOS (Intel)**: `sendfiles-macos-intel`
-            * 🍎 **macOS (Apple Silicon)**: `sendfiles-macos-silicon`
-            
-            ### 🛡️ Option 3: Portable Signed Packages (Antivirus & WDAC Bypass)
-            If your operating system blocks the standalone executable due to security policies (e.g. *Windows Defender Application Control (WDAC)* or *SmartScreen*), download the corresponding portable package instead. These run using official, signed Node.js binaries and bypass security policy blocks.
-            1. Download and unzip/unpack the archive.
-            2. Double-click the launcher script (`start-windows.bat`, `start-linux.sh`, or `start-macos.command`).
-            
-            * 🪟 **Windows Portable**: `sendfiles-portable-windows.zip`
-            * 🐧 **Linux Portable**: `sendfiles-portable-linux.tar.gz`
-            * 🍎 **macOS Portable**: `sendfiles-portable-macos.zip`
+            A normal windowed application. It runs the sharing server in the
+            background and shows the interface in its own window. Other devices
+            on your Wi-Fi connect to the LAN address displayed inside the app.
+
+            | Platform | File |
+            | --- | --- |
+            | Windows (installer) | `SendFiles-<version>-Setup.exe` |
+            | Windows (no install) | `SendFiles-<version>-portable.exe` |
+            | Linux | `SendFiles-<version>-x64.AppImage` |
+            | macOS | `SendFiles-<version>-<arch>.dmg` |
+
+            These builds are not code-signed. Windows SmartScreen will show
+            "Windows protected your PC": choose More info, then Run anyway. On
+            macOS, right-click the app and choose Open the first time.
+
+            ### Option 2: Standalone single-file executables
+
+            A console program that starts the server and opens your default
+            browser. No installation, but it leaves a terminal window open.
+
+            | Platform | File |
+            | --- | --- |
+            | Windows | `sendfiles-windows.exe` |
+            | Linux | `sendfiles-linux` |
+            | macOS (Intel) | `sendfiles-macos-intel` |
+            | macOS (Apple Silicon) | `sendfiles-macos-silicon` |
+
+            ### Option 3: Portable packages with an official Node.js runtime
+
+            Use these if your operating system blocks the other options under
+            an application control policy such as Windows Defender Application
+            Control. They run on an official, signed Node.js binary.
+
+            1. Download and unpack the archive.
+            2. Run the launcher: `start-windows.bat`, `start-linux.sh`, or
+               `start-macos.command`.
+
+            | Platform | File |
+            | --- | --- |
+            | Windows | `sendfiles-portable-windows.zip` |
+            | Linux | `sendfiles-portable-linux.tar.gz` |
+            | macOS | `sendfiles-portable-macos.zip` |
+
+            ### Notes
+
+            If the default port 3000 is already in use, SendFiles moves to the
+            next free port and prints the address it chose. Set `PORT` and
+            `HTTPS_PORT` to override.
           files: |
             release/sendfiles-windows.exe
             release/sendfiles-linux

@@ -689,6 +689,38 @@
       line-height: 1.6;
     }
 
+    .portable-note code {
+      font-family: var(--font-mono);
+      font-size: 0.75rem;
+      background: var(--primary-glow);
+      color: var(--primary);
+      padding: 0.1rem 0.35rem;
+      border-radius: 0.3rem;
+    }
+
+    .download-group-heading {
+      font-size: 1.15rem;
+      font-weight: 700;
+      letter-spacing: -0.3px;
+      color: var(--text);
+      max-width: 700px;
+      margin: 3rem auto 0.5rem auto;
+      text-align: center;
+    }
+
+    .download-group-heading:first-of-type {
+      margin-top: 0;
+    }
+
+    .download-group-note {
+      font-size: 0.85rem;
+      color: var(--text-muted);
+      text-align: center;
+      max-width: 700px;
+      margin: 0 auto 2rem auto;
+      line-height: 1.6;
+    }
+
     /* FAQ Section */
     .faq {
       padding: 6rem 0;
@@ -851,7 +883,7 @@
   <section class="hero">
     <div class="container">
       <div class="hero-badge">
-        <span></span> v1.0.0 Stable Release
+        <span></span> Secure peer-to-peer file transfer
       </div>
       <h1>Direct, Fast, and <span>Zero-Knowledge</span> Peer-to-Peer File Sharing</h1>
       <p class="hero-subtitle">
@@ -996,46 +1028,85 @@
   <section id="download" class="download">
     <div class="container">
       <div class="section-title">
-        <h2>Download SendFiles Executables</h2>
-        <p>Choose between single-file standalone binaries or portable signed archives designed to bypass strict enterprise security boundaries.</p>
+        <h2>Download SendFiles</h2>
+        <p>The desktop app is the recommended option. The command-line builds remain available if you prefer to run SendFiles as a background service.</p>
       </div>
-      
+
+      <h3 class="download-group-heading">Desktop application</h3>
+      <p class="download-group-note">A normal windowed application. It runs the sharing server in the background and shows the interface in its own window. Other devices on your Wi-Fi connect to the LAN address displayed inside the app.</p>
+
       <div class="download-grid">
-        <!-- Windows -->
         <div class="download-card glass">
           <div class="download-icon-wrapper"><i data-lucide="monitor"></i></div>
-          <h3>Windows Platform</h3>
-          <p class="meta">Windows 10/11 x64 architecture</p>
+          <h3>Windows</h3>
+          <p class="meta">Windows 10/11, x64</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-windows.exe" class="btn btn-primary"><i data-lucide="download"></i> Standalone .EXE</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-windows.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (WDAC Bypass)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-primary"><i data-lucide="download"></i> Installer (Setup.exe)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable (no install)</a>
           </div>
         </div>
-        <!-- Linux -->
         <div class="download-card glass">
           <div class="download-icon-wrapper"><i data-lucide="terminal"></i></div>
-          <h3>Linux Distribution</h3>
-          <p class="meta">Ubuntu/Debian/CentOS x64 system</p>
+          <h3>Linux</h3>
+          <p class="meta">x64 AppImage</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-linux" class="btn btn-primary"><i data-lucide="download"></i> Standalone Binary</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-linux.tar.gz" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .TAR.GZ</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-primary"><i data-lucide="download"></i> AppImage</a>
           </div>
         </div>
-        <!-- macOS -->
         <div class="download-card glass">
           <div class="download-icon-wrapper"><i data-lucide="laptop-2"></i></div>
-          <h3>macOS Platform</h3>
-          <p class="meta">Intel & Apple Silicon (M1/M2/M3) chips</p>
+          <h3>macOS</h3>
+          <p class="meta">Intel and Apple Silicon</p>
           <div class="download-actions">
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-macos-silicon" class="btn btn-primary"><i data-lucide="download"></i> Apple Silicon Binary</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-macos-intel" class="btn btn-primary"><i data-lucide="download"></i> Intel Core Binary</a>
-            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-macos.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .ZIP (Signed)</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest" class="btn btn-primary"><i data-lucide="download"></i> Disk image (.dmg)</a>
+          </div>
+        </div>
+      </div>
+
+      <p class="portable-note">
+        <strong>Unsigned builds</strong>: these applications are not code-signed. Windows SmartScreen shows "Windows protected your PC" the first time you run one, so choose <strong>More info</strong> then <strong>Run anyway</strong>. On macOS, right-click the app and choose <strong>Open</strong> for the first launch.
+      </p>
+
+      <h3 class="download-group-heading">Command-line builds</h3>
+      <p class="download-group-note">Single-file executables that start the server and open your default browser, plus portable archives that run on an official Node.js runtime for machines under an application control policy.</p>
+
+      <div class="download-grid">
+        <div class="download-card glass">
+          <div class="download-icon-wrapper"><i data-lucide="monitor"></i></div>
+          <h3>Windows</h3>
+          <p class="meta">Windows 10/11, x64</p>
+          <div class="download-actions">
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-windows.exe" class="btn btn-primary"><i data-lucide="download"></i> Standalone .exe</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-windows.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .zip</a>
+          </div>
+        </div>
+        <div class="download-card glass">
+          <div class="download-icon-wrapper"><i data-lucide="terminal"></i></div>
+          <h3>Linux</h3>
+          <p class="meta">Ubuntu, Debian, CentOS, x64</p>
+          <div class="download-actions">
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-linux" class="btn btn-primary"><i data-lucide="download"></i> Standalone binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-linux.tar.gz" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .tar.gz</a>
+          </div>
+        </div>
+        <div class="download-card glass">
+          <div class="download-icon-wrapper"><i data-lucide="laptop-2"></i></div>
+          <h3>macOS</h3>
+          <p class="meta">Intel and Apple Silicon</p>
+          <div class="download-actions">
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-macos-silicon" class="btn btn-primary"><i data-lucide="download"></i> Apple Silicon binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-macos-intel" class="btn btn-primary"><i data-lucide="download"></i> Intel binary</a>
+            <a href="https://github.com/zihaaaad/SendFiles/releases/latest/download/sendfiles-portable-macos.zip" class="btn btn-secondary"><i data-lucide="package-open"></i> Portable .zip</a>
           </div>
         </div>
       </div>
       
       <p class="portable-note">
-        <strong>💡 Antivirus & Windows Defender Bypass</strong>: Standard standalone executables are compiled wrappers that might trigger corporate security warnings (e.g. SmartScreen). The <strong>Portable Signed Packages</strong> contain the officially signed Node.js binary from the Node Foundation and run the self-contained app code via a helper script, completely bypassing execution locks.
+        <strong>Blocked by security policy?</strong> Standalone executables are compiled wrappers that can trigger corporate security warnings such as SmartScreen or Windows Defender Application Control. The portable archives instead ship the officially signed Node.js binary and start the app through a small launcher script, which those policies normally allow.
+      </p>
+
+      <p class="portable-note">
+        <strong>Port already in use?</strong> SendFiles listens on port 3000 by default. If something else holds that port, it moves to the next free one and prints the address it chose. Set the <code>PORT</code> and <code>HTTPS_PORT</code> environment variables to pick your own.
       </p>
     </div>
   </section>
